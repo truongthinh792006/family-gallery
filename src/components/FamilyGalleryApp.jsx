@@ -14,7 +14,8 @@ const DEFAULT_SITE_INFO = {
 };
 
 export default function FamilyGalleryApp({ initialAlbums = [] }) {
-  const [albums, setAlbums] = useState(initialAlbums);
+  const safeInitialAlbums = Array.isArray(initialAlbums) ? initialAlbums : [];
+  const [albums, setAlbums] = useState(safeInitialAlbums);
   const [siteInfo, setSiteInfo] = useState(DEFAULT_SITE_INFO);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isClientReady, setIsClientReady] = useState(false);
@@ -23,31 +24,39 @@ export default function FamilyGalleryApp({ initialAlbums = [] }) {
   useEffect(() => {
     setIsClientReady(true);
 
-    // 1. Đọc nhanh từ localStorage để hiển thị tức thời (Instant UI)
+    // 1. Đọc an toàn từ localStorage để hiển thị tức thời (Instant UI)
     try {
       const savedAlbums = localStorage.getItem('family_gallery_albums');
       if (savedAlbums) {
-        setAlbums(JSON.parse(savedAlbums));
+        const parsed = JSON.parse(savedAlbums);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAlbums(parsed);
+        }
       }
 
       const savedSiteInfo = localStorage.getItem('family_gallery_site_info');
       if (savedSiteInfo) {
-        setSiteInfo(JSON.parse(savedSiteInfo));
+        const parsedInfo = JSON.parse(savedSiteInfo);
+        if (parsedInfo && typeof parsedInfo === 'object') {
+          setSiteInfo((prev) => ({ ...prev, ...parsedInfo }));
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Không thể đọc bộ nhớ tạm localStorage:', e);
+    }
 
-    // 2. Fetch dữ liệu mới nhất từ Vercel KV thông qua API trung gian
+    // 2. Fetch dữ liệu mới nhất từ Vercel KV thông qua API trung gian an toàn
     const fetchLatestData = async () => {
       try {
         const res = await fetch('/api/gallery', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          if (data.success && Array.isArray(data.albums)) {
+          if (data && Array.isArray(data.albums)) {
             setAlbums(data.albums);
-            if (data.siteInfo) {
+            if (data.siteInfo && typeof data.siteInfo === 'object') {
               setSiteInfo(data.siteInfo);
             }
-            // Đồng bộ lại vào localStorage làm bộ nhớ đệm
+            // Đồng bộ lại vào localStorage làm bộ nhớ đệm ngoại tuyến
             try {
               localStorage.setItem(
                 'family_gallery_albums',
@@ -63,44 +72,53 @@ export default function FamilyGalleryApp({ initialAlbums = [] }) {
           }
         }
       } catch (err) {
-        // Nếu offline hoặc mạng chậm, ứng dụng vẫn chạy mượt mà từ cache
+        // Nếu offline hoặc lỗi mạng, ứng dụng vẫn chạy mượt mà từ cache
+        console.warn('Lỗi khi fetch dữ liệu từ đám mây, sử dụng dữ liệu cục bộ:', err);
       }
     };
 
     fetchLatestData();
   }, []);
 
-  // Tổng hợp số lượng thống kê động
-  const totalAlbums = albums.length;
+  // Tổng hợp số lượng thống kê động an toàn
+  const safeAlbumsList = Array.isArray(albums) ? albums : [];
+  const totalAlbums = safeAlbumsList.length;
   const totalPhotos = useMemo(() => {
+    if (!Array.isArray(albums)) return 0;
     return albums.reduce(
-      (acc, album) => acc + (album.photos ? album.photos.length : 0),
+      (acc, album) =>
+        acc + (album && Array.isArray(album.photos) ? album.photos.length : 0),
       0
     );
   }, [albums]);
 
   // Lưu danh sách Album mới vào localStorage và cập nhật UI
   const handleSaveAlbums = (newAlbums) => {
-    setAlbums(newAlbums);
+    const listToSave = Array.isArray(newAlbums) ? newAlbums : [];
+    setAlbums(listToSave);
     try {
-      localStorage.setItem('family_gallery_albums', JSON.stringify(newAlbums));
+      localStorage.setItem('family_gallery_albums', JSON.stringify(listToSave));
     } catch {}
   };
 
   // Lưu thông tin Trang web mới vào localStorage và cập nhật UI
   const handleSaveSiteInfo = (newSiteInfo) => {
-    setSiteInfo(newSiteInfo);
+    const infoToSave =
+      newSiteInfo && typeof newSiteInfo === 'object'
+        ? newSiteInfo
+        : DEFAULT_SITE_INFO;
+    setSiteInfo(infoToSave);
     try {
       localStorage.setItem(
         'family_gallery_site_info',
-        JSON.stringify(newSiteInfo)
+        JSON.stringify(infoToSave)
       );
     } catch {}
   };
 
   // Khôi phục về dữ liệu mặc định từ data/albums.json
   const handleResetDefault = () => {
-    setAlbums(initialAlbums);
+    setAlbums(safeInitialAlbums);
     setSiteInfo(DEFAULT_SITE_INFO);
     try {
       localStorage.removeItem('family_gallery_albums');
@@ -119,7 +137,7 @@ export default function FamilyGalleryApp({ initialAlbums = [] }) {
       />
 
       {/* Danh sách Album & Lightbox mở công khai */}
-      <Gallery albums={albums} />
+      <Gallery albums={safeAlbumsList} />
 
       {/* Footer với nút vào nhanh Quản Trị */}
       <Footer onOpenAdmin={() => setIsAdminOpen(true)} />
@@ -128,7 +146,7 @@ export default function FamilyGalleryApp({ initialAlbums = [] }) {
       <AdminModal
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
-        albums={albums}
+        albums={safeAlbumsList}
         siteInfo={siteInfo}
         onSaveAlbums={handleSaveAlbums}
         onSaveSiteInfo={handleSaveSiteInfo}

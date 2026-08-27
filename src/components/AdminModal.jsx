@@ -875,9 +875,14 @@ export default function AdminModal({
                         >
                           <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-200">
                             <Image
-                              src={album.cover}
-                              alt={album.title}
+                              src={
+                                album && album.cover && typeof album.cover === 'string' && album.cover.trim() !== ''
+                                  ? album.cover
+                                  : 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80'
+                              }
+                              alt={album.title || 'Album'}
                               fill
+                              unoptimized
                               sizes="64px"
                               className="object-cover"
                             />

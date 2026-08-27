@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import defaultAlbums from '../../../../data/albums.json';
 
+export const dynamic = 'force-dynamic';
+
 const DEFAULT_SITE_INFO = {
   title: 'Những Khoảnh Khắc Vô Giá',
   subtitle:
@@ -16,37 +18,43 @@ const isKvConfigured = Boolean(
 
 /**
  * GET /api/gallery
- * Lấy dữ liệu album và thông tin website mới nhất từ Vercel KV (hoặc fallback từ albums.json)
+ * Lấy dữ liệu album và thông tin website mới nhất từ Vercel KV (hoặc fallback an toàn từ albums.json)
  */
 export async function GET() {
+  const albumsFallback = Array.isArray(defaultAlbums) ? defaultAlbums : [];
+
   try {
     if (isKvConfigured) {
-      const cloudData = await kv.get('family_gallery_data');
-      if (cloudData && Array.isArray(cloudData.albums)) {
-        return NextResponse.json({
-          success: true,
-          albums: cloudData.albums,
-          siteInfo: cloudData.siteInfo || DEFAULT_SITE_INFO,
-          isKvConfigured: true,
-          updatedAt: cloudData.updatedAt || null,
-        });
+      try {
+        const cloudData = await kv.get('family_gallery_data');
+        if (cloudData && Array.isArray(cloudData.albums)) {
+          return NextResponse.json({
+            success: true,
+            albums: cloudData.albums,
+            siteInfo: cloudData.siteInfo || DEFAULT_SITE_INFO,
+            isKvConfigured: true,
+            updatedAt: cloudData.updatedAt || null,
+          });
+        }
+      } catch (kvError) {
+        console.error('Lỗi khi truy xuất dữ liệu từ Vercel KV, fallback về tệp tĩnh:', kvError);
       }
     }
 
-    // Fallback: Trả về dữ liệu gốc từ tệp data/albums.json
+    // Fallback an toàn: Trả về dữ liệu gốc từ tệp data/albums.json
     return NextResponse.json({
       success: true,
-      albums: defaultAlbums,
+      albums: albumsFallback,
       siteInfo: DEFAULT_SITE_INFO,
       isKvConfigured,
       source: 'local_file',
     });
   } catch (error) {
-    console.error('Lỗi khi truy xuất dữ liệu từ Vercel KV:', error);
-    // Luôn đảm bảo trang web hoạt động bình thường kể cả khi KV gặp sự cố mạng
+    console.error('Lỗi tổng quát tại GET /api/gallery:', error);
+    // Luôn đảm bảo phản hồi HTTP 200 kèm mảng dữ liệu thay vì làm sập trang
     return NextResponse.json({
       success: true,
-      albums: defaultAlbums,
+      albums: albumsFallback,
       siteInfo: DEFAULT_SITE_INFO,
       isKvConfigured: false,
       source: 'fallback_error',
@@ -96,13 +104,23 @@ export async function POST(request) {
     };
 
     if (isKvConfigured) {
-      await kv.set('family_gallery_data', payload);
-      return NextResponse.json({
-        success: true,
-        message: 'Đã đồng bộ thành công lên đám mây Vercel KV trên mọi thiết bị!',
-        isKvConfigured: true,
-        updatedAt: payload.updatedAt,
-      });
+      try {
+        await kv.set('family_gallery_data', payload);
+        return NextResponse.json({
+          success: true,
+          message: 'Đã đồng bộ thành công lên đám mây Vercel KV trên mọi thiết bị!',
+          isKvConfigured: true,
+          updatedAt: payload.updatedAt,
+        });
+      } catch (kvSetError) {
+        console.error('Lỗi khi ghi dữ liệu lên Vercel KV:', kvSetError);
+        return NextResponse.json({
+          success: true,
+          message: 'Lưu thành công vào bộ nhớ tạm (Lỗi kết nối máy chủ đám mây Vercel KV)',
+          isKvConfigured: false,
+          updatedAt: payload.updatedAt,
+        });
+      }
     }
 
     // Phản hồi khi chưa có Vercel KV trong môi trường dev

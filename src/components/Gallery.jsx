@@ -179,8 +179,12 @@ export default function Gallery({ albums = [] }) {
       {filteredAlbums.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredAlbums.map((album) => {
-            const photoCount = album.photos ? album.photos.length : 0;
-            const previewPhotos = (album.photos || []).slice(0, 4);
+            const photoCount = album && Array.isArray(album.photos) ? album.photos.length : 0;
+            const previewPhotos = (album && Array.isArray(album.photos) ? album.photos : []).slice(0, 4);
+            const coverSrc =
+              album && album.cover && typeof album.cover === 'string' && album.cover.trim() !== ''
+                ? album.cover
+                : 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80';
 
             return (
               <article
@@ -201,9 +205,10 @@ export default function Gallery({ albums = [] }) {
                   className="relative aspect-[16/10] w-full overflow-hidden bg-stone-100 cursor-pointer block"
                 >
                   <Image
-                    src={album.cover}
-                    alt={album.title}
+                    src={coverSrc}
+                    alt={album.title || 'Album'}
                     fill
+                    unoptimized
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                   />
@@ -215,7 +220,7 @@ export default function Gallery({ albums = [] }) {
                   <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/95 text-stone-800 shadow-sm backdrop-blur-md">
                       <Sparkles className="w-3 h-3 text-amber-600" />
-                      {album.tag}
+                      {album.tag || 'Gia đình'}
                     </span>
 
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-black/60 text-white shadow-sm backdrop-blur-md">
@@ -233,7 +238,7 @@ export default function Gallery({ albums = [] }) {
                   {/* Năm thực hiện ở góc trái dưới */}
                   <div className="absolute bottom-3 left-3 flex items-center gap-1 text-xs text-white/90 font-medium drop-shadow-sm">
                     <Calendar className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Năm {album.year}</span>
+                    <span>Năm {album.year || ''}</span>
                   </div>
                 </div>
 
@@ -255,26 +260,34 @@ export default function Gallery({ albums = [] }) {
                   <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-2">
                     {/* Danh sách ảnh thu nhỏ có thể click xem trực tiếp ảnh đó */}
                     <div className="flex items-center -space-x-2 overflow-hidden py-1">
-                      {previewPhotos.map((photo, pIdx) => (
-                        <button
-                          key={pIdx}
-                          type="button"
-                          title={photo.title || `Xem ảnh ${pIdx + 1}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenAlbum(album, pIdx);
-                          }}
-                          className="relative w-8 h-8 rounded-full border-2 border-white shadow-xs overflow-hidden cursor-pointer hover:scale-110 hover:z-10 transition-transform focus:outline-none"
-                        >
-                          <Image
-                            src={photo.src}
-                            alt={photo.title || `Ảnh ${pIdx + 1}`}
-                            fill
-                            sizes="32px"
-                            className="object-cover"
-                          />
-                        </button>
-                      ))}
+                      {previewPhotos.map((photo, pIdx) => {
+                        const photoSrc =
+                          photo && photo.src && typeof photo.src === 'string' && photo.src.trim() !== ''
+                            ? photo.src
+                            : coverSrc;
+
+                        return (
+                          <button
+                            key={pIdx}
+                            type="button"
+                            title={photo.title || `Xem ảnh ${pIdx + 1}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenAlbum(album, pIdx);
+                            }}
+                            className="relative w-8 h-8 rounded-full border-2 border-white shadow-xs overflow-hidden cursor-pointer hover:scale-110 hover:z-10 transition-transform focus:outline-none"
+                          >
+                            <Image
+                              src={photoSrc}
+                              alt={photo.title || `Ảnh ${pIdx + 1}`}
+                              fill
+                              unoptimized
+                              sizes="32px"
+                              className="object-cover"
+                            />
+                          </button>
+                        );
+                      })}
                       {photoCount > 4 && (
                         <div
                           onClick={() => handleOpenAlbum(album, 4)}
