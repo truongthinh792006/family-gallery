@@ -76,7 +76,7 @@ family-gallery/
 
 ## 🔑 Mật khẩu Quản trị (Admin Password)
 
-- Mật khẩu Admin: **`18628712`**.
+- Mật khẩu Admin: **`admin123`**.
 - Để đổi mật khẩu: Mở file `.env.local` và sửa giá trị:
   ```env
   ADMIN_PASSWORD=mat_khau_moi_cua_ban
