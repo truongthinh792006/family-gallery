@@ -25,6 +25,9 @@ import {
   CloudUpload,
   Sparkles,
   Link2,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 
 export default function AdminModal({
@@ -75,6 +78,10 @@ export default function AdminModal({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatusMessage, setSyncStatusMessage] = useState('');
+
+  // Trạng thái Kéo Thả (Drag & Drop) sắp xếp danh sách album
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const adminPassword =
     process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
@@ -231,6 +238,66 @@ export default function AdminModal({
         setEditingIndex(null);
       }
     }
+  };
+
+  // -------------------------------------------------------------
+  // XỬ LÝ KÉO THẢ (DRAG & DROP) VÀ SẮP XẾP THỨ TỰ ALBUM
+  // -------------------------------------------------------------
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    try {
+      e.dataTransfer.setData('text/plain', index.toString());
+    } catch {}
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = () => {
+    // Giữ nguyên trạng thái để không bị nhấp nháy
+  };
+
+  const handleDrop = (e, targetIndex) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    setLocalAlbums((prev) => {
+      const updated = [...prev];
+      const [draggedItem] = updated.splice(draggedIndex, 1);
+      updated.splice(targetIndex, 0, draggedItem);
+      return updated;
+    });
+
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  // Di chuyển Album lên/xuống (Hỗ trợ thao tác nhanh & mobile cảm ứng)
+  const handleMoveAlbum = (index, direction) => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= localAlbums.length) return;
+
+    setLocalAlbums((prev) => {
+      const updated = [...prev];
+      const [item] = updated.splice(index, 1);
+      updated.splice(targetIndex, 0, item);
+      return updated;
+    });
   };
 
   // Thêm ảnh thủ công vào form album đang sửa
@@ -866,76 +933,164 @@ export default function AdminModal({
                     </div>
                   </form>
                 ) : (
-                  /* Danh sách album tổng quan */
+                  /* Danh sách album tổng quan (Hỗ trợ kéo thả sắp xếp & nút điều hướng) */
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-stone-500">
-                        Quản lý và sắp xếp các album ảnh hiển thị trên trang chủ
-                      </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h3 className="font-serif text-sm font-bold text-stone-900 flex items-center gap-2">
+                          <span>Danh Sách Album</span>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-sans font-semibold">
+                            {localAlbums.length}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-stone-500 mt-0.5">
+                          Kéo thả biểu tượng ⠿ hoặc dùng nút ↑ ↓ để thay đổi thứ tự hiển thị trên trang chủ
+                        </p>
+                      </div>
                       <button
                         type="button"
                         onClick={handleStartAddAlbum}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-800 hover:bg-amber-900 text-amber-50 text-xs font-medium shadow-sm transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-800 hover:bg-amber-900 text-amber-50 text-xs font-medium shadow-sm transition cursor-pointer self-start sm:self-auto shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Thêm Album Mới</span>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {localAlbums.map((album, idx) => (
-                        <div
-                          key={album.id || idx}
-                          className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-stone-200 shadow-xs hover:border-stone-300 transition"
-                        >
-                          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-200">
-                            <Image
-                              src={
-                                album && album.cover && typeof album.cover === 'string' && album.cover.trim() !== ''
-                                  ? album.cover
-                                  : 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80'
-                              }
-                              alt={album.title || 'Album'}
-                              fill
-                              unoptimized
-                              sizes="64px"
-                              className="object-cover"
-                            />
-                          </div>
+                    <div className="flex flex-col gap-2.5">
+                      {localAlbums.map((album, idx) => {
+                        const isDragging = draggedIndex === idx;
+                        const isOver = dragOverIndex === idx;
 
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-serif font-bold text-sm text-stone-900 truncate">
-                              {album.title}
-                            </h4>
-                            <div className="flex items-center gap-2 text-[11px] text-stone-500 mt-0.5">
-                              <span className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
-                                {album.tag}
+                        return (
+                          <div
+                            key={album.id || `album-${idx}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, idx)}
+                            onDragOver={(e) => handleDragOver(e, idx)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, idx)}
+                            onDragEnd={handleDragEnd}
+                            className={`group flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 bg-white rounded-2xl border transition-all duration-150 select-none ${
+                              isDragging
+                                ? 'opacity-40 scale-[0.98] border-dashed border-amber-400 bg-amber-50/50 shadow-inner'
+                                : isOver
+                                ? 'border-2 border-blue-500 border-dashed bg-blue-50/40 scale-[1.01] shadow-md ring-2 ring-blue-500/20'
+                                : 'border-stone-200 shadow-2xs hover:border-stone-300 hover:shadow-xs'
+                            }`}
+                          >
+                            {/* Tay cầm kéo thả & Nút điều hướng thứ tự */}
+                            <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                              {/* Icon tay cầm kéo thả */}
+                              <div
+                                className="p-1 sm:p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 cursor-grab active:cursor-grabbing transition"
+                                title="Cầm để kéo thả thay đổi vị trí album"
+                              >
+                                <GripVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+                              </div>
+
+                              {/* Huy hiệu số thứ tự */}
+                              <span className="w-6 text-center text-[11px] font-mono font-bold text-stone-400">
+                                #{idx + 1}
                               </span>
-                              <span>• {album.year}</span>
-                              <span>• {album.photos?.length || 0} ảnh</span>
+
+                              {/* Nút Mũi tên Lên / Xuống (Hỗ trợ mobile cảm ứng & thao tác nhanh) */}
+                              <div className="flex flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveAlbum(idx, 'up')}
+                                  className={`p-1 rounded text-stone-500 transition cursor-pointer ${
+                                    idx === 0
+                                      ? 'opacity-20 cursor-not-allowed'
+                                      : 'hover:bg-amber-100 hover:text-amber-900 active:scale-95'
+                                  }`}
+                                  title="Di chuyển album lên trên"
+                                  aria-label="Di chuyển lên trên"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === localAlbums.length - 1}
+                                  onClick={() => handleMoveAlbum(idx, 'down')}
+                                  className={`p-1 rounded text-stone-500 transition cursor-pointer ${
+                                    idx === localAlbums.length - 1
+                                      ? 'opacity-20 cursor-not-allowed'
+                                      : 'hover:bg-amber-100 hover:text-amber-900 active:scale-95'
+                                  }`}
+                                  title="Di chuyển album xuống dưới"
+                                  aria-label="Di chuyển xuống dưới"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Ảnh bìa Album */}
+                            <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-200 shadow-2xs">
+                              <Image
+                                src={
+                                  album && album.cover && typeof album.cover === 'string' && album.cover.trim() !== ''
+                                    ? album.cover
+                                    : 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80'
+                                }
+                                alt={album.title || 'Album'}
+                                fill
+                                unoptimized
+                                sizes="64px"
+                                className="object-cover"
+                              />
+                            </div>
+
+                            {/* Thông tin Album */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-serif font-bold text-sm text-stone-900 truncate">
+                                {album.title}
+                              </h4>
+                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] text-stone-500 mt-1">
+                                <span className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
+                                  {album.tag}
+                                </span>
+                                <span>• Năm {album.year}</span>
+                                <span>• {album.photos?.length || 0} ảnh</span>
+                              </div>
+                            </div>
+
+                            {/* Cụm nút tác vụ (Sửa & Xóa) */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditAlbum(idx)}
+                                className="p-2 rounded-xl text-stone-500 hover:text-amber-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer"
+                                title="Chỉnh sửa album"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAlbum(idx)}
+                                className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition cursor-pointer"
+                                title="Xóa album"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
+                        );
+                      })}
 
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditAlbum(idx)}
-                              className="p-1.5 rounded-lg text-stone-500 hover:text-amber-800 hover:bg-amber-50 transition cursor-pointer"
-                              title="Sửa album"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteAlbum(idx)}
-                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                              title="Xóa album"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                      {localAlbums.length === 0 && (
+                        <div className="p-8 text-center bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+                          <Images className="w-8 h-8 text-stone-400 mx-auto mb-2" />
+                          <p className="text-sm font-medium text-stone-600">
+                            Chưa có album nào trong thư viện
+                          </p>
+                          <p className="text-xs text-stone-400 mt-1">
+                            Bấm nút &ldquo;Thêm Album Mới&rdquo; ở góc trên để tạo album đầu tiên.
+                          </p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 )}
