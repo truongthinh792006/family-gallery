@@ -21,6 +21,8 @@ import {
   Camera,
   LogOut,
   AlertTriangle,
+  Loader2,
+  CloudUpload,
 } from 'lucide-react';
 
 export default function AdminModal({
@@ -58,9 +60,11 @@ export default function AdminModal({
     photos: [],
   });
 
-  // Trạng thái phản hồi thông báo
+  // Trạng thái phản hồi thông báo & đồng bộ đám mây
   const [copied, setCopied] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMessage, setSyncStatusMessage] = useState('');
 
   const adminPassword =
     process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
@@ -72,6 +76,7 @@ export default function AdminModal({
       setLocalSiteInfo(siteInfo);
       setEditingIndex(null);
       setSaveSuccess(false);
+      setSyncStatusMessage('');
 
       // Kiểm tra phiên đăng nhập admin trong sessionStorage
       try {
@@ -182,7 +187,7 @@ export default function AdminModal({
     });
   };
 
-  // Lưu form album (thêm mới hoặc cập nhật)
+  // Lưu form album (thêm mới hoặc cập nhật vào local state)
   const handleSaveAlbumForm = (e) => {
     e.preventDefault();
     if (!albumForm.title.trim()) {
@@ -219,12 +224,54 @@ export default function AdminModal({
     setEditingIndex(null);
   };
 
-  // Lưu thay đổi vào localStorage và cập nhật App
-  const handleApplyChanges = () => {
-    onSaveAlbums(localAlbums);
-    onSaveSiteInfo(localSiteInfo);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+  // Lưu thay đổi: Gửi POST lên /api/gallery (Vercel KV) và cập nhật App state
+  const handleApplyChanges = async () => {
+    setIsSyncing(true);
+    setSyncStatusMessage('Đang lưu lên đám mây...');
+
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          albums: localAlbums,
+          siteInfo: localSiteInfo,
+          password: adminPassword,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        onSaveAlbums(localAlbums);
+        onSaveSiteInfo(localSiteInfo);
+        setSaveSuccess(true);
+        setSyncStatusMessage(
+          result.isKvConfigured
+            ? 'Đã đồng bộ thành công trên mọi thiết bị!'
+            : 'Đã lưu thành công! (Chưa cấu hình KV, lưu cục bộ)'
+        );
+      } else {
+        alert(result.message || 'Lỗi khi lưu lên máy chủ');
+        // Vẫn lưu vào bộ nhớ cục bộ để không mất công nhập
+        onSaveAlbums(localAlbums);
+        onSaveSiteInfo(localSiteInfo);
+      }
+    } catch (err) {
+      // Khi mất mạng hoặc offline, lưu cục bộ dự phòng
+      onSaveAlbums(localAlbums);
+      onSaveSiteInfo(localSiteInfo);
+      setSaveSuccess(true);
+      setSyncStatusMessage('Đã lưu cục bộ vào trình duyệt!');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSyncStatusMessage('');
+      }, 4000);
+    }
   };
 
   // Xuất file JSON tải về
@@ -290,7 +337,7 @@ export default function AdminModal({
               Bảng Quản Trị
             </h2>
             <p className="text-stone-600 text-xs sm:text-sm">
-              Vui lòng nhập mật khẩu quản trị viên để mở khóa bảng cài đặt và chỉnh sửa album.
+              Vui lòng nhập mật khẩu quản trị viên để mở khóa bảng cài đặt, chỉnh sửa album và đồng bộ đa thiết bị.
             </p>
           </div>
 
@@ -351,10 +398,10 @@ export default function AdminModal({
               </div>
               <div>
                 <h2 className="font-serif text-lg font-bold text-stone-900 leading-tight">
-                  Quản Lý Album & Nội Dung
+                  Quản Lý Album & Đồng Bộ Đám Mây
                 </h2>
                 <span className="text-[11px] text-stone-500">
-                  {localAlbums.length} album • Bộ nhớ tạm trình duyệt
+                  {localAlbums.length} album • Tự động đồng bộ đa thiết bị (Vercel KV)
                 </span>
               </div>
             </div>
@@ -771,20 +818,36 @@ export default function AdminModal({
               </button>
             </div>
 
-            {/* Nhóm nút Lưu & Áp dụng */}
+            {/* Nhóm nút Lưu & Đồng Bộ Lên Đám Mây */}
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
               {saveSuccess && (
-                <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
-                  <Check className="w-4 h-4" /> Đã lưu vào giao diện!
+                <span className="text-xs text-emerald-700 font-medium flex items-center gap-1.5 animate-fade-in">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>{syncStatusMessage || 'Đã lưu thành công!'}</span>
                 </span>
               )}
+
               <button
                 type="button"
+                disabled={isSyncing}
                 onClick={handleApplyChanges}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-xl bg-amber-800 hover:bg-amber-900 text-amber-50 text-xs font-semibold shadow-md transition cursor-pointer w-full sm:w-auto"
+                className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md transition cursor-pointer w-full sm:w-auto ${
+                  isSyncing
+                    ? 'bg-amber-900/60 text-amber-200 cursor-not-allowed'
+                    : 'bg-amber-800 hover:bg-amber-900 text-amber-50'
+                }`}
               >
-                <Save className="w-4 h-4" />
-                <span>Lưu & Áp Dụng</span>
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Đang lưu lên đám mây...</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-4 h-4 text-amber-200" />
+                    <span>Lưu & Đồng Bộ Đám Mây</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
