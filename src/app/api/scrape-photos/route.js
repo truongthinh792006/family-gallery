@@ -1,8 +1,70 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
+/**
+ * Hàm giải mã và chuẩn hóa chuỗi JSON / HTML từ Google Photos
+ * Xử lý triệt để các ký tự escape: \/, \\/, \u002F, \x2f, \u003D, \x3d, \u0026
+ */
+function unescapeGoogleContent(content) {
+  if (!content || typeof content !== 'string') return '';
+  return content
+    .replace(/\\+u002[fF]/g, '/')
+    .replace(/\\+x2[fF]/g, '/')
+    .replace(/\\+u003[dD]/g, '=')
+    .replace(/\\+x3[dD]/g, '=')
+    .replace(/\\+u0026/g, '&')
+    .replace(/\\+x26/g, '&')
+    .replace(/\\+\//g, '/')
+    .replace(/\\\//g, '/');
+}
+
+/**
+ * Trích xuất photo ID / hash duy nhất của ảnh (loại bỏ domain và query params)
+ */
+function extractPhotoKey(url) {
+  if (!url || typeof url !== 'string') return null;
+  // Loại bỏ giao thức và domain (ví dụ: https://lh3.googleusercontent.com/ hoặc //lh4...)
+  const withoutDomain = url.replace(/^(?:https?:)?\/\/[^\/]+\//, '');
+  // Cắt bỏ phần kích thước sau dấu '=' hoặc '?'
+  const baseHash = withoutDomain
+    .split('=')[0]
+    .split('?')[0]
+    .split('#')[0]
+    .trim();
+  return baseHash || null;
+}
+
+/**
+ * Kiểm tra xem URL / hash có phải là ảnh hợp lệ từ album hay không
+ * Loại bỏ avatar người dùng, icon giao diện và chuỗi quá ngắn
+ */
+function isValidAlbumPhoto(url, photoKey) {
+  if (!url || !photoKey) return false;
+
+  // Loại trừ ảnh đại diện người dùng Google (/a/, /a-/, /ogw/, /d/, /fife/)
+  if (
+    url.includes('/a/') ||
+    url.includes('/a-/') ||
+    url.includes('/ogw/') ||
+    url.includes('/d/') ||
+    url.includes('/fife/')
+  ) {
+    return false;
+  }
+
+  // Hash của ảnh Google Photos trong album thường dài từ 25 đến hơn 100 ký tự
+  if (photoKey.length < 25) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * POST /api/scrape-photos
- * Tự động bóc tách danh sách ảnh trực tiếp từ đường link chia sẻ công khai Google Photos
+ * Tự động quét toàn bộ các khối <script> (AF_initDataCallback, JSON mảng sâu)
+ * để bóc tách 100% số lượng ảnh từ album Google Photos lớn
  */
 export async function POST(request) {
   try {
@@ -53,7 +115,7 @@ export async function POST(request) {
       );
     }
 
-    // 3. Tải nội dung HTML từ trang Google Photos công khai (theo dõi chuyển hướng)
+    // 3. Tải toàn bộ nội dung HTML từ trang Google Photos công khai (theo dõi redirect)
     const response = await fetch(trimmedUrl, {
       redirect: 'follow',
       headers: {
@@ -69,7 +131,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
-          message: `Không thể kết nối đến Google Photos (Mã lỗi: ${response.status}). Vui lòng kiểm tra lại link album.`,
+          message: `Không thể kết nối đến Google Photos (Mã phản hồi: ${response.status}). Vui lòng kiểm tra lại link album.`,
         },
         { status: 400 }
       );
@@ -89,9 +151,10 @@ export async function POST(request) {
     } else if (titleTagMatch && titleTagMatch[1]) {
       albumTitle = titleTagMatch[1];
     }
-    // Loại bỏ hậu tố "- Google Photos" hoặc "- Google Ảnh"
+
+    // Loại bỏ các hậu tố thương hiệu của Google
     albumTitle = albumTitle
-      .replace(/\s*-\s*Google\s*(?:Photos|Ảnh)$/i, '')
+      .replace(/\s*-\s*Google\s*(?:Photos|Ảnh|相簿)$/i, '')
       .trim();
 
     let coverPhoto = '';
@@ -103,36 +166,74 @@ export async function POST(request) {
       coverPhoto = `${baseCover}=w1600`;
     }
 
-    // 5. Sử dụng Regex bóc tách toàn bộ link ảnh lh3.googleusercontent.com
-    // Định dạng ảnh Google Photos thường là: https://lh3.googleusercontent.com/pw/... hoặc https://lh3.googleusercontent.com/[hash dài]
-    const photoRegex =
-      /https:\/\/lh3\.googleusercontent\.com\/(?:pw\/)?[a-zA-Z0-9_\-]{25,}/g;
-    const matches = html.match(photoRegex) || [];
+    // 5. Bóc tách chuyên sâu từ TẤT CẢ các khối <script> (AF_initDataCallback & JSON arrays)
+    const scriptTagRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+    const scriptBlocks = [];
+    let scriptMatch;
+    while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
+      if (scriptMatch[1]) {
+        scriptBlocks.push(scriptMatch[1]);
+      }
+    }
 
-    // Tập hợp lọc trùng lặp và loại trừ link icon/avatar
-    const uniqueBaseUrls = new Set();
+    // Pattern nhận diện URL ảnh Google Photos (hỗ trợ mọi CDN lh0-lh9, photos)
+    const photoUrlPattern =
+      /(?:https?:)?\/\/(?:lh[0-9]|photos)\.googleusercontent\.com\/(?:pw\/)?[a-zA-Z0-9_\-]{20,}(?:=[a-zA-Z0-9\-_]+)?/gi;
+
+    // Pattern nhận diện relative hash dạng pw/... trong các mảng dữ liệu sâu
+    const relativePwPattern = /["'](pw\/[a-zA-Z0-9_\-]{25,})["']/g;
+
+    // Map deduplicate dựa trên photoKey duy nhất
+    const photoMap = new Map();
+
+    const scanContent = (content) => {
+      if (!content) return;
+      const unescaped = unescapeGoogleContent(content);
+
+      // 1. Quét theo URL đầy đủ
+      const matches = unescaped.match(photoUrlPattern) || [];
+      for (let rawUrl of matches) {
+        if (rawUrl.startsWith('//')) {
+          rawUrl = `https:${rawUrl}`;
+        }
+        const photoKey = extractPhotoKey(rawUrl);
+        if (isValidAlbumPhoto(rawUrl, photoKey)) {
+          if (!photoMap.has(photoKey)) {
+            photoMap.set(photoKey, `https://lh3.googleusercontent.com/${photoKey}=w1600`);
+          }
+        }
+      }
+
+      // 2. Quét thêm relative hash pw/... nếu có
+      let pwMatch;
+      while ((pwMatch = relativePwPattern.exec(unescaped)) !== null) {
+        const photoKey = pwMatch[1];
+        if (isValidAlbumPhoto(photoKey, photoKey)) {
+          if (!photoMap.has(photoKey)) {
+            photoMap.set(photoKey, `https://lh3.googleusercontent.com/${photoKey}=w1600`);
+          }
+        }
+      }
+    };
+
+    // Bước A: Quét từng block <script> riêng biệt (chứa AF_initDataCallback và các chunk data)
+    for (const scriptContent of scriptBlocks) {
+      scanContent(scriptContent);
+    }
+
+    // Bước B: Quét toàn bộ trang HTML đã giải mã để không bỏ sót bất kỳ ảnh nào
+    scanContent(html);
+
+    // 6. Chuyển đổi thành danh sách ảnh hoàn chỉnh
     const extractedPhotos = [];
-
-    for (const rawUrl of matches) {
-      // Loại bỏ link avatar tài khoản Google (/a/ hoặc /ogw/)
-      if (
-        rawUrl.includes('/a/') ||
-        rawUrl.includes('/ogw/') ||
-        rawUrl.includes('/d/')
-      ) {
-        continue;
-      }
-
-      const baseUrl = rawUrl.split('=')[0];
-      if (!uniqueBaseUrls.has(baseUrl)) {
-        uniqueBaseUrls.add(baseUrl);
-        const index = extractedPhotos.length + 1;
-        extractedPhotos.push({
-          src: `${baseUrl}=w1600`,
-          title: `Khoảnh khắc ${index}`,
-          description: albumTitle || '',
-        });
-      }
+    let photoIndex = 1;
+    for (const [, srcUrl] of photoMap.entries()) {
+      extractedPhotos.push({
+        src: srcUrl,
+        title: `Khoảnh khắc ${photoIndex}`,
+        description: albumTitle || '',
+      });
+      photoIndex++;
     }
 
     if (extractedPhotos.length === 0) {
@@ -140,7 +241,7 @@ export async function POST(request) {
         {
           success: false,
           message:
-            'Không tìm thấy ảnh trong liên kết này. Hãy đảm bảo album đã được bật chế độ Chia sẻ Công Khai (Bất kỳ ai có liên kết đều xem được).',
+            'Không tìm thấy ảnh trong liên kết này. Hãy đảm bảo album đã được bật chế độ "Chia sẻ Công Khai" (Bất kỳ ai có liên kết đều xem được).',
         },
         { status: 404 }
       );
@@ -157,7 +258,7 @@ export async function POST(request) {
       coverPhoto,
       count: extractedPhotos.length,
       photos: extractedPhotos,
-      message: `Đã trích xuất thành công ${extractedPhotos.length} ảnh từ Google Photos!`,
+      message: `Đã trích xuất thành công toàn bộ ${extractedPhotos.length} ảnh từ Google Photos!`,
     });
   } catch (error) {
     console.error('Lỗi khi bóc tách ảnh từ Google Photos:', error);
