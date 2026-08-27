@@ -64,7 +64,9 @@ export async function POST(request) {
     const { albums, siteInfo, password } = body;
 
     const adminPassword =
-      process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
+      process.env.ADMIN_PASSWORD ||
+      process.env.NEXT_PUBLIC_ADMIN_PASSWORD ||
+      'admin123';
 
     // Xác thực mật khẩu Quản Trị Viên
     if (!password || password.trim() !== adminPassword) {
