@@ -1,16 +1,20 @@
 # 📸 Album Kỷ Niệm Gia Đình (Family Gallery)
 
-Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu giữ và trình chiếu những khoảnh khắc kỷ niệm vô giá của gia đình. Được xây dựng trên nền tảng **Next.js (App Router)**, **Tailwind CSS**, **Lucide Icons**, **yet-another-react-lightbox** và đồng bộ dữ liệu đám mây đa thiết bị bằng **Vercel KV (@vercel/kv)**.
+Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu giữ và trình chiếu những khoảnh khắc kỷ niệm vô giá của gia đình. Được xây dựng trên nền tảng **Next.js (App Router)**, **Tailwind CSS**, **Lucide Icons**, **yet-another-react-lightbox**, đồng bộ dữ liệu đám mây **Vercel KV (@vercel/kv)** và tích hợp công cụ **tự động trích xuất ảnh từ Google Photos Album**.
 
 ---
 
 ## ✨ Tính năng nổi bật
 
 - 🌍 **Xem ảnh công khai & mượt mà**: Trang chủ mở công khai cho tất cả mọi người cùng vào ngắm nhìn những bức ảnh kỷ niệm gia đình mà không gặp rào cản.
+- ⚡ **Nhập nhanh từ Google Photos Album (Tự động trích xuất)**:
+  - Chỉ cần dán link chia sẻ công khai của Google Photos (dạng `https://photos.app.goo.gl/...` hoặc `https://photos.google.com/share/...`).
+  - Hệ thống tự động theo dõi chuyển hướng, bóc tách tiêu đề album, ảnh bìa và toàn bộ danh sách ảnh con trực tiếp từ máy chủ Google.
+  - Tự động lọc bỏ avatar/icon hệ thống và tối ưu đuôi kích thước ảnh độ nét cao (`=w1600`).
 - ☁️ **Đồng bộ đa thiết bị tức thì (Vercel KV)**: Mọi chỉnh sửa, thêm/xóa album từ PC hay điện thoại của Admin sẽ lập tức được đồng bộ lên đám mây và hiển thị cho tất cả thành viên trên mọi thiết bị.
 - ⚙️ **Bảng Quản Trị & Cài Đặt (Admin Settings Modal) có khóa mật khẩu**:
   - Nhấn nút **Quản Trị / Settings** ở góc Header hoặc Footer để mở cửa sổ đăng nhập Admin.
-  - Khóa mật khẩu an toàn (mặc định: `admin123`, tùy biến qua `.env.local`), có hiệu ứng rung phản hồi (shake animation) khi gõ sai.
+  - Khóa mật khẩu an toàn (mặc định: `admin123`, tùy biến qua `.env.local` hoặc biến bảo mật máy chủ `ADMIN_PASSWORD`).
   - **Quản lý Album trực tiếp**: Thêm album mới, sửa thông tin (tiêu đề, năm, tag, link cover, mô tả), thêm/xóa ảnh con (`src`, `title`, `description`), hoặc xóa album.
   - **Chỉnh sửa Thông tin Website**: Sửa tiêu đề chính trang web, lời tựa tình cảm và mốc thời gian hiển thị.
   - **Lưu & Đồng Bộ Đám Mây**: Gửi dữ liệu an toàn qua API `/api/gallery` lên Vercel KV và lưu bộ nhớ đệm `localStorage`.
@@ -50,14 +54,16 @@ family-gallery/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── gallery/
-│   │   │       └── route.js     # API Route đồng bộ Vercel KV (GET & POST)
+│   │   │   ├── gallery/
+│   │   │   │   └── route.js     # API Route đồng bộ Vercel KV (GET & POST)
+│   │   │   └── scrape-photos/
+│   │   │       └── route.js     # API Route bóc tách ảnh Google Photos
 │   │   ├── globals.css          # Cấu hình Tailwind CSS, animation shake & scrollbar
 │   │   ├── layout.js            # Root layout tích hợp Google Fonts
 │   │   └── page.js              # Server Component đọc data/albums.json
 │   └── components/
 │       ├── FamilyGalleryApp.jsx # Component điều phối dữ liệu động & Vercel KV
-│       ├── AdminModal.jsx       # Bảng Quản Trị & Cài Đặt (có khóa PIN & đồng bộ)
+│       ├── AdminModal.jsx       # Bảng Quản Trị & Cài Đặt (tích hợp trích xuất ảnh)
 │       ├── Header.jsx           # Header trang trí, thống kê & nút Cài đặt
 │       ├── Gallery.jsx          # Lưới Album, bộ lọc tag & Lightbox
 │       └── Footer.jsx           # Chân trang & nút Quản Trị Album
@@ -73,9 +79,20 @@ family-gallery/
 - Mật khẩu Admin mặc định: **`admin123`**.
 - Để đổi mật khẩu: Mở file `.env.local` và sửa giá trị:
   ```env
+  ADMIN_PASSWORD=mat_khau_moi_cua_ban
   NEXT_PUBLIC_ADMIN_PASSWORD=mat_khau_moi_cua_ban
   ```
   *(Khởi động lại `npm run dev` nếu đang chạy để áp dụng)*
+
+---
+
+## 📸 Hướng dẫn Trích xuất Album từ Google Photos
+
+1. Trên điện thoại hoặc máy tính, mở album trong **Google Photos**.
+2. Bấm nút **Chia sẻ (Share)** -> Chọn **Tạo liên kết (Create link)** để lấy link công khai (dạng `https://photos.app.goo.gl/...`).
+3. Mở website Family Gallery -> Bấm nút **Quản Trị** ở góc trên Header -> Nhập mật khẩu `admin123`.
+4. Bấm **"Thêm Album Mới"** -> Dán đường link vào ô **"Nhập nhanh từ Google Photos Album"** và bấm **"Trích xuất ảnh"**.
+5. Toàn bộ ảnh sẽ được tự động nạp vào form kèm ảnh bìa. Bấm **"Xong"** và bấm **"Lưu & Đồng Bộ Đám Mây"** để hoàn tất!
 
 ---
 
@@ -88,40 +105,21 @@ Khi bạn đưa dự án lên **[Vercel](https://vercel.com/)**:
    - Vào Dashboard của dự án trên Vercel.
    - Nhấp vào tab **Storage** -> Chọn **Create Database** -> Chọn **KV (Redis)**.
    - Đặt tên (ví dụ: `family-gallery-kv`) và bấm **Create**.
-   - Vercel sẽ tự động liên kết các biến môi trường:
-     - `KV_URL`
-     - `KV_REST_API_URL`
-     - `KV_REST_API_TOKEN`
-     - `KV_REST_API_READ_ONLY_TOKEN`
+   - Vercel sẽ tự động liên kết các biến môi trường: `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 3. **Thêm biến mật khẩu**:
    - Vào **Settings** -> **Environment Variables**.
-   - Thêm biến `NEXT_PUBLIC_ADMIN_PASSWORD` với giá trị mật khẩu bạn muốn (ví dụ: `giadinh2024admin`).
-4. **Redeploy**: Sau khi liên kết, mọi dữ liệu bạn chỉnh sửa trong Admin Panel trên điện thoại hoặc máy tính sẽ lập tức lưu vào KV và hiển thị cho mọi người!
+   - Thêm biến `ADMIN_PASSWORD` và `NEXT_PUBLIC_ADMIN_PASSWORD` với mật khẩu của bạn.
+4. **Redeploy**: Hệ thống đã sẵn sàng đồng bộ trực tiếp đa nền tảng!
 
 ---
 
 ## 🚀 Hướng dẫn chạy thử nghiệm cục bộ
 
-### 1. Cài đặt các gói phụ thuộc
 ```bash
 npm install
-```
-
-### 2. Khởi động môi trường phát triển (Dev Server)
-```bash
 npm run dev
 ```
-Mở trình duyệt và truy cập: **`http://localhost:3000`**
-
-- **Xem ảnh**: Toàn bộ album ảnh mở công khai, nhấp vào thẻ album để mở trình xem slide Lightbox.
-- **Vào Bảng Quản Trị**: Nhấn nút **Quản Trị** (icon bánh răng `Settings`) ở góc trên Header hoặc nút **Quản Trị Album** ở chân trang Footer.
-- Nhập mật khẩu: `admin123` để mở bảng điều khiển và đồng bộ dữ liệu.
-
-### 3. Build kiểm tra phiên bản sản xuất
-```bash
-npm run build
-npm run start
-```
+Truy cập: **`http://localhost:3000`**
 
 ---
 
@@ -129,6 +127,6 @@ npm run start
 
 ```bash
 git add .
-git commit -m "feat: add vercel kv multi-device sync and cloud api"
+git commit -m "feat: add automated google photos album scraper in admin panel"
 git push
 ```

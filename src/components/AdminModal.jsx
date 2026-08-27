@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   Loader2,
   CloudUpload,
+  Sparkles,
+  Link2,
 } from 'lucide-react';
 
 export default function AdminModal({
@@ -60,6 +62,11 @@ export default function AdminModal({
     photos: [],
   });
 
+  // Trạng thái bóc tách ảnh Google Photos
+  const [googlePhotosUrl, setGooglePhotosUrl] = useState('');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeMessage, setScrapeMessage] = useState(null);
+
   // Trạng thái phản hồi thông báo & đồng bộ đám mây
   const [copied, setCopied] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -77,6 +84,8 @@ export default function AdminModal({
       setEditingIndex(null);
       setSaveSuccess(false);
       setSyncStatusMessage('');
+      setScrapeMessage(null);
+      setGooglePhotosUrl('');
 
       // Kiểm tra phiên đăng nhập admin trong sessionStorage
       try {
@@ -132,6 +141,8 @@ export default function AdminModal({
       ],
     });
     setEditingIndex(-1);
+    setScrapeMessage(null);
+    setGooglePhotosUrl('');
   };
 
   // Mở form sửa album đã có
@@ -139,6 +150,8 @@ export default function AdminModal({
     const target = localAlbums[index];
     setAlbumForm(JSON.parse(JSON.stringify(target)));
     setEditingIndex(index);
+    setScrapeMessage(null);
+    setGooglePhotosUrl('');
   };
 
   // Xóa album
@@ -185,6 +198,75 @@ export default function AdminModal({
       };
       return { ...prev, photos: updatedPhotos };
     });
+  };
+
+  // Xử lý tự động bóc tách ảnh từ link chia sẻ Google Photos
+  const handleScrapeGooglePhotos = async () => {
+    if (!googlePhotosUrl.trim()) return;
+
+    setIsScraping(true);
+    setScrapeMessage(null);
+
+    try {
+      const res = await fetch('/api/scrape-photos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: googlePhotosUrl.trim(),
+          password: passwordInput || adminPassword,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        // Tự động điền tiêu đề nếu form hiện tại đang trống và có tiêu đề bóc tách được
+        const newTitle = albumForm.title.trim()
+          ? albumForm.title
+          : result.title || albumForm.title;
+
+        // Điền ảnh bìa (Cover Photo) nếu chưa có
+        const newCover = albumForm.cover.trim()
+          ? albumForm.cover
+          : result.coverPhoto || (result.photos[0] ? result.photos[0].src : '');
+
+        // Nạp toàn bộ danh sách ảnh trích xuất được vào mảng photos
+        const existingPhotos = albumForm.photos.filter(
+          (p) => p.src && p.src.trim() !== ''
+        );
+        const mergedPhotos =
+          existingPhotos.length === 0
+            ? result.photos
+            : [...existingPhotos, ...result.photos];
+
+        setAlbumForm((prev) => ({
+          ...prev,
+          title: newTitle,
+          cover: newCover,
+          photos: mergedPhotos,
+        }));
+
+        setScrapeMessage({
+          type: 'success',
+          text: `Đã trích xuất thành công ${result.count} ảnh từ Google Photos!`,
+        });
+        setGooglePhotosUrl('');
+      } else {
+        setScrapeMessage({
+          type: 'error',
+          text: result.message || 'Không thể trích xuất ảnh từ liên kết này.',
+        });
+      }
+    } catch (err) {
+      setScrapeMessage({
+        type: 'error',
+        text: 'Lỗi kết nối khi trích xuất: ' + err.message,
+      });
+    } finally {
+      setIsScraping(false);
+    }
   };
 
   // Lưu form album (thêm mới hoặc cập nhật vào local state)
@@ -485,6 +567,73 @@ export default function AdminModal({
                       </button>
                     </div>
 
+                    {/* HỘP CÔNG CỤ: Nhập nhanh từ Google Photos Album */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-amber-50/50 border border-blue-200/80 shadow-2xs space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-blue-600 animate-pulse" />
+                        <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wider">
+                          Nhập nhanh từ Google Photos Album
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                          Tự động bóc tách
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500">
+                        Dán link chia sẻ công khai (dạng <code className="bg-white px-1 py-0.5 rounded text-blue-700 border border-blue-200/50">photos.app.goo.gl/...</code> hoặc <code className="bg-white px-1 py-0.5 rounded text-blue-700 border border-blue-200/50">photos.google.com/share/...</code>) để tự động nạp toàn bộ ảnh chất lượng cao.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                        <div className="relative flex-1">
+                          <input
+                            type="url"
+                            value={googlePhotosUrl}
+                            onChange={(e) => setGooglePhotosUrl(e.target.value)}
+                            placeholder="https://photos.app.goo.gl/..."
+                            className="w-full px-3 py-2 text-xs bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isScraping || !googlePhotosUrl.trim()}
+                          onClick={handleScrapeGooglePhotos}
+                          className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer shrink-0 ${
+                            isScraping || !googlePhotosUrl.trim()
+                              ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
+                        >
+                          {isScraping ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Đang quét ảnh...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Trích xuất ảnh</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Thông báo kết quả trích xuất */}
+                      {scrapeMessage && (
+                        <div
+                          className={`text-xs flex items-center gap-1.5 p-2.5 rounded-xl ${
+                            scrapeMessage.type === 'success'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          {scrapeMessage.type === 'success' ? (
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          )}
+                          <span>{scrapeMessage.text}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-stone-700 mb-1">
@@ -542,7 +691,7 @@ export default function AdminModal({
 
                     <div>
                       <label className="block text-xs font-semibold text-stone-700 mb-1">
-                        Link Ảnh Bìa (Cover URL - Unsplash / Google Drive)
+                        Link Ảnh Bìa (Cover URL - Unsplash / Google Photos)
                       </label>
                       <input
                         type="url"
@@ -550,7 +699,7 @@ export default function AdminModal({
                         onChange={(e) =>
                           setAlbumForm({ ...albumForm, cover: e.target.value })
                         }
-                        placeholder="https://images.unsplash.com/photo-..."
+                        placeholder="https://images.unsplash.com/... hoặc https://lh3.googleusercontent.com/..."
                         className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
                       />
                     </div>
@@ -582,11 +731,11 @@ export default function AdminModal({
                           className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg transition cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Thêm ảnh</span>
+                          <span>Thêm ảnh thủ công</span>
                         </button>
                       </div>
 
-                      <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                         {albumForm.photos.map((photo, pIdx) => (
                           <div
                             key={pIdx}
@@ -629,7 +778,7 @@ export default function AdminModal({
 
                         {albumForm.photos.length === 0 && (
                           <p className="text-xs text-stone-400 text-center py-4 bg-stone-50 rounded-xl border border-dashed border-stone-200">
-                            Chưa có ảnh nào. Bấm &ldquo;Thêm ảnh&rdquo; ở trên để nạp ảnh vào album.
+                            Chưa có ảnh nào. Dán link Google Photos ở trên hoặc bấm &ldquo;Thêm ảnh thủ công&rdquo;.
                           </p>
                         )}
                       </div>
