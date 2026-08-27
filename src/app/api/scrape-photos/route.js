@@ -70,7 +70,7 @@ export async function POST(request) {
     const adminPassword =
       process.env.ADMIN_PASSWORD ||
       process.env.NEXT_PUBLIC_ADMIN_PASSWORD ||
-      'admin123';
+      '18628712';
 
     if (!password || password.trim() !== adminPassword) {
       return NextResponse.json(

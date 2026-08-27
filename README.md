@@ -14,7 +14,7 @@ Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu 
 - ☁️ **Đồng bộ đa thiết bị tức thì (Vercel KV)**: Mọi chỉnh sửa, thêm/xóa album từ PC hay điện thoại của Admin sẽ lập tức được đồng bộ lên đám mây và hiển thị cho tất cả thành viên trên mọi thiết bị.
 - ⚙️ **Bảng Quản Trị & Cài Đặt (Admin Settings Modal) có khóa mật khẩu**:
   - Nhấn nút **Quản Trị / Settings** ở góc Header hoặc Footer để mở cửa sổ đăng nhập Admin.
-  - Khóa mật khẩu an toàn (mặc định: `admin123`, tùy biến qua `.env.local` hoặc biến bảo mật máy chủ `ADMIN_PASSWORD`).
+  - Khóa mật khẩu an toàn (tùy biến qua `.env.local` hoặc biến bảo mật máy chủ `ADMIN_PASSWORD`).
   - **Quản lý Album trực tiếp**: Thêm album mới, sửa thông tin (tiêu đề, năm, tag, link cover, mô tả), thêm/xóa ảnh con (`src`, `title`, `description`), hoặc xóa album.
   - **Chỉnh sửa Thông tin Website**: Sửa tiêu đề chính trang web, lời tựa tình cảm và mốc thời gian hiển thị.
   - **Lưu & Đồng Bộ Đám Mây**: Gửi dữ liệu an toàn qua API `/api/gallery` lên Vercel KV và lưu bộ nhớ đệm `localStorage`.
@@ -76,7 +76,7 @@ family-gallery/
 
 ## 🔑 Mật khẩu Quản trị (Admin Password)
 
-- Mật khẩu Admin mặc định: **`admin123`**.
+- Mật khẩu Admin: **`18628712`**.
 - Để đổi mật khẩu: Mở file `.env.local` và sửa giá trị:
   ```env
   ADMIN_PASSWORD=mat_khau_moi_cua_ban
@@ -90,7 +90,7 @@ family-gallery/
 
 1. Trên điện thoại hoặc máy tính, mở album trong **Google Photos**.
 2. Bấm nút **Chia sẻ (Share)** -> Chọn **Tạo liên kết (Create link)** để lấy link công khai (dạng `https://photos.app.goo.gl/...`).
-3. Mở website Family Gallery -> Bấm nút **Quản Trị** ở góc trên Header -> Nhập mật khẩu `admin123`.
+3. Mở website Family Gallery -> Bấm nút **Quản Trị** ở góc trên Header -> Nhập mật khẩu quản trị.
 4. Bấm **"Thêm Album Mới"** -> Dán đường link vào ô **"Nhập nhanh từ Google Photos Album"** và bấm **"Trích xuất ảnh"**.
 5. Toàn bộ ảnh sẽ được tự động nạp vào form kèm ảnh bìa. Bấm **"Xong"** và bấm **"Lưu & Đồng Bộ Đám Mây"** để hoàn tất!
 

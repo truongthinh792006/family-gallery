@@ -84,7 +84,7 @@ export default function AdminModal({
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const adminPassword =
-    process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
+    process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '18628712';
 
   /**
    * Hook useCallback: Hợp nhất dữ liệu đang nhập trong form vào danh sách localAlbums.
@@ -596,10 +596,6 @@ export default function AdminModal({
               Đăng Nhập Quản Trị
             </button>
           </form>
-
-          <p className="mt-5 text-center text-[11px] text-stone-400">
-            Mật khẩu mặc định: <code className="bg-stone-100 px-1 py-0.5 rounded text-stone-700 font-mono">admin123</code>
-          </p>
         </div>
       ) : (
         /* Màn hình 2: Bảng Điều Khiển Quản Trị Toàn Diện */
