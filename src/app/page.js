@@ -1,4 +1,5 @@
 import albumsData from "../../data/albums.json";
+import PasswordGate from "@/components/PasswordGate";
 import Header from "@/components/Header";
 import Gallery from "@/components/Gallery";
 import Footer from "@/components/Footer";
@@ -11,10 +12,12 @@ export default function Home() {
   );
 
   return (
-    <main className="flex-1 flex flex-col">
-      <Header totalAlbums={totalAlbums} totalPhotos={totalPhotos} />
-      <Gallery albums={albumsData} />
-      <Footer />
-    </main>
+    <PasswordGate>
+      <main className="flex-1 flex flex-col">
+        <Header totalAlbums={totalAlbums} totalPhotos={totalPhotos} />
+        <Gallery albums={albumsData} />
+        <Footer />
+      </main>
+    </PasswordGate>
   );
 }
