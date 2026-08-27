@@ -36,6 +36,9 @@ export default function AdminModal({
   onSaveSiteInfo,
   onResetDefault,
 }) {
+  // -------------------------------------------------------------
+  // 1. TẤT CẢ CÁC REACT HOOKS (Được khai báo ở đầu hàm component)
+  // -------------------------------------------------------------
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -76,7 +79,62 @@ export default function AdminModal({
   const adminPassword =
     process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
 
-  // Chỉ khởi tạo lại state cục bộ khi modal mở lên (tránh reset form khi props thay đổi trong phiên làm việc)
+  /**
+   * Hook useCallback: Hợp nhất dữ liệu đang nhập trong form vào danh sách localAlbums.
+   * Khai báo ở trên cùng để tuân thủ tuyệt đối Rules of Hooks.
+   */
+  const getCommittedAlbums = useCallback(() => {
+    if (editingIndex === null) {
+      return localAlbums;
+    }
+
+    const currentTitle = (albumForm.title || '').trim();
+    if (!currentTitle) {
+      return localAlbums;
+    }
+
+    let coverUrl = (albumForm.cover || '').trim();
+    if (
+      !coverUrl &&
+      albumForm.photos &&
+      albumForm.photos.length > 0 &&
+      albumForm.photos[0].src
+    ) {
+      coverUrl = albumForm.photos[0].src.trim();
+    }
+    if (!coverUrl) {
+      coverUrl =
+        'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80';
+    }
+
+    const cleanedAlbum = {
+      id: albumForm.id || `album-${Date.now()}`,
+      title: currentTitle,
+      year: (albumForm.year !== undefined && albumForm.year !== null ? albumForm.year : new Date().getFullYear()).toString().trim(),
+      tag: (albumForm.tag || 'Gia đình').trim(),
+      cover: coverUrl,
+      description: (albumForm.description || '').trim(),
+      photos: (albumForm.photos || []).filter((p) => p && p.src && p.src.trim() !== ''),
+    };
+
+    let updatedList;
+    if (editingIndex === -1) {
+      // Thêm mới lên đầu danh sách
+      updatedList = [cleanedAlbum, ...localAlbums];
+    } else if (editingIndex >= 0 && editingIndex < localAlbums.length) {
+      // Cập nhật vị trí cũ
+      updatedList = [...localAlbums];
+      updatedList[editingIndex] = cleanedAlbum;
+    } else {
+      updatedList = localAlbums;
+    }
+
+    return updatedList;
+  }, [editingIndex, albumForm, localAlbums]);
+
+  /**
+   * Hook useEffect: Khởi tạo lại dữ liệu khi modal mở lên.
+   */
   useEffect(() => {
     if (isOpen) {
       setLocalAlbums(JSON.parse(JSON.stringify(albums)));
@@ -96,7 +154,9 @@ export default function AdminModal({
     }
   }, [isOpen]); // Chỉ phụ thuộc isOpen để tránh reset form khi parent component cập nhật
 
-  if (!isOpen) return null;
+  // -------------------------------------------------------------
+  // 2. CÁC HÀM XỬ LÝ SỰ KIỆN (Event Handlers)
+  // -------------------------------------------------------------
 
   // Xử lý xác thực mật khẩu Admin
   const handleLogin = (e) => {
@@ -281,59 +341,6 @@ export default function AdminModal({
     }
   };
 
-  /**
-   * Hàm cốt lõi: Hợp nhất dữ liệu đang nhập trong form (nếu đang ở màn hình sửa/thêm)
-   * vào danh sách localAlbums để đảm bảo không bị thất thoát dữ liệu.
-   */
-  const getCommittedAlbums = useCallback(() => {
-    if (editingIndex === null) {
-      return localAlbums;
-    }
-
-    const currentTitle = (albumForm.title || '').trim();
-    if (!currentTitle) {
-      return localAlbums;
-    }
-
-    let coverUrl = (albumForm.cover || '').trim();
-    if (
-      !coverUrl &&
-      albumForm.photos &&
-      albumForm.photos.length > 0 &&
-      albumForm.photos[0].src
-    ) {
-      coverUrl = albumForm.photos[0].src.trim();
-    }
-    if (!coverUrl) {
-      coverUrl =
-        'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1200&q=80';
-    }
-
-    const cleanedAlbum = {
-      id: albumForm.id || `album-${Date.now()}`,
-      title: currentTitle,
-      year: (albumForm.year !== undefined && albumForm.year !== null ? albumForm.year : new Date().getFullYear()).toString().trim(),
-      tag: (albumForm.tag || 'Gia đình').trim(),
-      cover: coverUrl,
-      description: (albumForm.description || '').trim(),
-      photos: (albumForm.photos || []).filter((p) => p && p.src && p.src.trim() !== ''),
-    };
-
-    let updatedList;
-    if (editingIndex === -1) {
-      // Thêm mới lên đầu danh sách
-      updatedList = [cleanedAlbum, ...localAlbums];
-    } else if (editingIndex >= 0 && editingIndex < localAlbums.length) {
-      // Cập nhật vị trí cũ
-      updatedList = [...localAlbums];
-      updatedList[editingIndex] = cleanedAlbum;
-    } else {
-      updatedList = localAlbums;
-    }
-
-    return updatedList;
-  }, [editingIndex, albumForm, localAlbums]);
-
   // Lưu form album (khi người dùng bấm "Xong (Cập nhật Album)")
   const handleSaveAlbumForm = (e) => {
     if (e) e.preventDefault();
@@ -443,6 +450,14 @@ export default function AdminModal({
     }
   };
 
+  // -------------------------------------------------------------
+  // 3. ĐIỀU KIỆN THOÁT SỚM (Đặt sau khi TẤT CẢ các hooks đã chạy)
+  // -------------------------------------------------------------
+  if (!isOpen) return null;
+
+  // -------------------------------------------------------------
+  // 4. RENDER GIAO DIỆN CHÍNH
+  // -------------------------------------------------------------
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm overflow-y-auto">
       {/* Màn hình 1: Nhập mật khẩu xác thực Admin */}
