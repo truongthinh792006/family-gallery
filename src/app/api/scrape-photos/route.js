@@ -53,7 +53,7 @@ function isValidAlbumPhoto(url, photoKey) {
     return false;
   }
 
-  // Hash của ảnh Google Photos trong album thường dài từ 25 đến hơn 100 ký tự
+  // Hash của ảnh Google Photos trong album thường dài từ 25 đến hơn 120 ký tự
   if (photoKey.length < 25) {
     return false;
   }
@@ -62,9 +62,213 @@ function isValidAlbumPhoto(url, photoKey) {
 }
 
 /**
+ * Trích xuất token phiên làm việc Google (XSRF auth token 'at' / 'SNlM0e') từ HTML
+ */
+function extractAtToken(html) {
+  if (!html) return '';
+  // 1. SNlM0e trong object WIZ_global_data
+  const snMatch = html.match(/"SNlM0e"\s*:\s*"([^"]+)"/);
+  if (snMatch && snMatch[1]) return snMatch[1];
+
+  // 2. SNlM0e dạng array literal
+  const arrayMatch = html.match(/\["SNlM0e",\s*null,\s*"([^"]+)"\]/);
+  if (arrayMatch && arrayMatch[1]) return arrayMatch[1];
+
+  // 3. Ftik6d
+  const ftikMatch = html.match(/"Ftik6d"\s*:\s*"([^"]+)"/);
+  if (ftikMatch && ftikMatch[1]) return ftikMatch[1];
+
+  return '';
+}
+
+/**
+ * Trích xuất mã định danh Album Key (dạng AF1Qip...) từ URL chuyển hướng hoặc HTML
+ */
+function extractAlbumKey(finalUrl, html) {
+  // 1. Từ URL chuyển hướng: https://photos.google.com/share/AF1Qip...
+  if (finalUrl) {
+    const urlMatch = finalUrl.match(/\/share\/([a-zA-Z0-9_\-]+)/);
+    if (urlMatch && urlMatch[1]) {
+      return urlMatch[1].split('?')[0];
+    }
+  }
+
+  // 2. Từ HTML: key album bắt đầu bằng AF1Qip
+  if (html) {
+    const htmlMatch = html.match(/"(AF1Qip[a-zA-Z0-9_\-]{20,})"/);
+    if (htmlMatch && htmlMatch[1]) {
+      return htmlMatch[1];
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Trích xuất nextPageToken đầu tiên từ khối AF_initDataCallback trong HTML
+ */
+function extractInitialNextPageToken(html) {
+  if (!html) return null;
+
+  const callbackRegex = /AF_initDataCallback\s*\(\s*\{([\s\S]*?)\}\s*\)\s*;/g;
+  let match;
+
+  while ((match = callbackRegex.exec(html)) !== null) {
+    const block = match[1];
+    // Chỉ quan tâm các khối có chứa ảnh hoặc key liên quan đến ds:1 / ds:2
+    if (
+      !block.includes('googleusercontent.com') &&
+      !block.includes('pw/') &&
+      !block.includes('ds:1') &&
+      !block.includes('ds:2')
+    ) {
+      continue;
+    }
+
+    // Trích xuất phần data mảng: data: [...] hoặc data: function(){return [...]}
+    const dataMatch = block.match(
+      /data\s*:\s*(?:function\s*\(\)\s*\{\s*return\s+)?(\[[\s\S]*\])/
+    );
+    if (dataMatch && dataMatch[1]) {
+      try {
+        const cleanJson = dataMatch[1].trim().replace(/;?\s*\}?\s*$/, '');
+        const parsed = JSON.parse(cleanJson);
+        if (Array.isArray(parsed)) {
+          // Trong cấu trúc Google Photos Album:
+          // parsed[0] là danh sách ảnh trang 1
+          // parsed[1] là nextPageToken (string) nếu còn trang tiếp theo
+          if (
+            parsed[1] &&
+            typeof parsed[1] === 'string' &&
+            parsed[1].length > 10
+          ) {
+            return parsed[1];
+          }
+        }
+      } catch {
+        // Tiếp tục thử regex nếu JSON.parse gặp lỗi cú pháp
+      }
+    }
+
+    // Fallback regex tìm token dạng string ở cuối mảng dữ liệu
+    const tokenRegex =
+      /,\s*["']([A-Za-z0-9_\-]{30,})["']\s*(?:,\s*null)*\s*\]\s*$/;
+    const tokenMatch = block.match(tokenRegex);
+    if (tokenMatch && tokenMatch[1]) {
+      return tokenMatch[1];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Gửi RPC request batchexecute đến Google Photos để tải trang ảnh tiếp theo
+ */
+async function fetchBatchExecutePage(
+  albumKey,
+  nextPageToken,
+  atToken,
+  refererUrl
+) {
+  const reqId = 100000 + Math.floor(Math.random() * 900000);
+  const endpoint = `https://photos.google.com/_/PhotosUi/data/batchexecute?rpcids=snAcKc&source-path=${encodeURIComponent(
+    `/share/${albumKey}`
+  )}&_reqid=${reqId}&rt=c`;
+
+  // Thử cấu trúc payload snAcKc: [albumKey, nextPageToken]
+  const innerPayload = JSON.stringify([albumKey, nextPageToken]);
+  const fReq = JSON.stringify([[['snAcKc', innerPayload, null, 'generic']]]);
+
+  const bodyParams = new URLSearchParams();
+  bodyParams.append('f.req', fReq);
+  if (atToken) {
+    bodyParams.append('at', atToken);
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: '*/*',
+        Referer: refererUrl || `https://photos.google.com/share/${albumKey}`,
+        'Accept-Language': 'vi,en-US;q=0.9,en;q=0.8',
+      },
+      body: bodyParams.toString(),
+    });
+
+    if (!res.ok) {
+      console.warn(`Batchexecute request HTTP status: ${res.status}`);
+      return { text: '', nextToken: null };
+    }
+
+    const responseText = await res.text();
+    let nextToken = null;
+
+    // Phân tích bóc tách nextToken mới từ response envelope của Google:
+    // Định dạng: )]}' \n <length> \n [[["wrb.fr","snAcKc","[...inner json...]",...]]]
+    try {
+      const cleanedText = responseText.replace(/^\)]}'\s*/, '');
+      const lines = cleanedText.split('\n');
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine.startsWith('[[')) continue;
+        try {
+          const parsedWrapper = JSON.parse(trimmedLine);
+          if (Array.isArray(parsedWrapper)) {
+            for (const item of parsedWrapper) {
+              if (
+                Array.isArray(item) &&
+                item[0] === 'wrb.fr' &&
+                item[1] === 'snAcKc' &&
+                item[2]
+              ) {
+                const innerData = JSON.parse(item[2]);
+                // innerData[1] là token của trang kế tiếp
+                if (
+                  innerData &&
+                  Array.isArray(innerData) &&
+                  typeof innerData[1] === 'string' &&
+                  innerData[1].length > 10
+                ) {
+                  nextToken = innerData[1];
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+    } catch (e) {
+      console.warn('Lỗi khi bóc tách token phân trang:', e);
+    }
+
+    // Fallback regex tìm token nếu cấu trúc wrapper phân mảnh
+    if (!nextToken) {
+      const fallbackMatches = [
+        ...responseText.matchAll(/,"([A-Za-z0-9_\-]{40,})"/g),
+      ];
+      for (const fMatch of fallbackMatches) {
+        if (fMatch[1] && fMatch[1] !== nextPageToken && fMatch[1] !== albumKey) {
+          nextToken = fMatch[1];
+          break;
+        }
+      }
+    }
+
+    return { text: responseText, nextToken };
+  } catch (err) {
+    console.warn('Lỗi khi gửi request batchexecute:', err);
+    return { text: '', nextToken: null };
+  }
+}
+
+/**
  * POST /api/scrape-photos
- * Tự động quét toàn bộ các khối <script> (AF_initDataCallback, JSON mảng sâu)
- * để bóc tách 100% số lượng ảnh từ album Google Photos lớn
+ * Tự động quét toàn bộ HTML và thực hiện phân trang RPC batchexecute
+ * để gom đủ 100% số lượng ảnh từ Google Photos album (vượt qua giới hạn 300 ảnh)
  */
 export async function POST(request) {
   try {
@@ -137,6 +341,7 @@ export async function POST(request) {
       );
     }
 
+    const finalResolvedUrl = response.url || trimmedUrl;
     const html = await response.text();
 
     // 4. Trích xuất Tiêu đề Album và Ảnh đại diện (og:image)
@@ -166,31 +371,18 @@ export async function POST(request) {
       coverPhoto = `${baseCover}=w1600`;
     }
 
-    // 5. Bóc tách chuyên sâu từ TẤT CẢ các khối <script> (AF_initDataCallback & JSON arrays)
-    const scriptTagRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
-    const scriptBlocks = [];
-    let scriptMatch;
-    while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
-      if (scriptMatch[1]) {
-        scriptBlocks.push(scriptMatch[1]);
-      }
-    }
-
-    // Pattern nhận diện URL ảnh Google Photos (hỗ trợ mọi CDN lh0-lh9, photos)
+    // 5. Khởi tạo bộ quét và Map deduplicate ảnh
     const photoUrlPattern =
       /(?:https?:)?\/\/(?:lh[0-9]|photos)\.googleusercontent\.com\/(?:pw\/)?[a-zA-Z0-9_\-]{20,}(?:=[a-zA-Z0-9\-_]+)?/gi;
-
-    // Pattern nhận diện relative hash dạng pw/... trong các mảng dữ liệu sâu
     const relativePwPattern = /["'](pw\/[a-zA-Z0-9_\-]{25,})["']/g;
 
-    // Map deduplicate dựa trên photoKey duy nhất
     const photoMap = new Map();
 
     const scanContent = (content) => {
       if (!content) return;
       const unescaped = unescapeGoogleContent(content);
 
-      // 1. Quét theo URL đầy đủ
+      // A. Quét theo URL đầy đủ
       const matches = unescaped.match(photoUrlPattern) || [];
       for (let rawUrl of matches) {
         if (rawUrl.startsWith('//')) {
@@ -199,32 +391,71 @@ export async function POST(request) {
         const photoKey = extractPhotoKey(rawUrl);
         if (isValidAlbumPhoto(rawUrl, photoKey)) {
           if (!photoMap.has(photoKey)) {
-            photoMap.set(photoKey, `https://lh3.googleusercontent.com/${photoKey}=w1600`);
+            photoMap.set(
+              photoKey,
+              `https://lh3.googleusercontent.com/${photoKey}=w1600`
+            );
           }
         }
       }
 
-      // 2. Quét thêm relative hash pw/... nếu có
+      // B. Quét thêm relative hash pw/... nếu có
       let pwMatch;
       while ((pwMatch = relativePwPattern.exec(unescaped)) !== null) {
         const photoKey = pwMatch[1];
         if (isValidAlbumPhoto(photoKey, photoKey)) {
           if (!photoMap.has(photoKey)) {
-            photoMap.set(photoKey, `https://lh3.googleusercontent.com/${photoKey}=w1600`);
+            photoMap.set(
+              photoKey,
+              `https://lh3.googleusercontent.com/${photoKey}=w1600`
+            );
           }
         }
       }
     };
 
-    // Bước A: Quét từng block <script> riêng biệt (chứa AF_initDataCallback và các chunk data)
-    for (const scriptContent of scriptBlocks) {
-      scanContent(scriptContent);
+    // Bước 5.1: Quét từng block <script> trong HTML ban đầu
+    const scriptTagRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+    let scriptMatch;
+    while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
+      if (scriptMatch[1]) {
+        scanContent(scriptMatch[1]);
+      }
     }
-
-    // Bước B: Quét toàn bộ trang HTML đã giải mã để không bỏ sót bất kỳ ảnh nào
+    // Quét thêm toàn bộ trang HTML gốc
     scanContent(html);
 
-    // 6. Chuyển đổi thành danh sách ảnh hoàn chỉnh
+    // 6. THỰC HIỆN PHÂN TRANG QUA BATCHEXECUTE (RPC snAcKc) NẾU ALBUM LỚN HƠN 300 ẢNH
+    const albumKey = extractAlbumKey(finalResolvedUrl, html);
+    const atToken = extractAtToken(html);
+    let currentPageToken = extractInitialNextPageToken(html);
+
+    // Giới hạn an toàn tối đa 20 trang (~6.000 ảnh) để tránh timeout
+    const MAX_PAGES = 20;
+    let pageCount = 0;
+
+    while (currentPageToken && albumKey && pageCount < MAX_PAGES) {
+      pageCount++;
+      const { text: batchText, nextToken } = await fetchBatchExecutePage(
+        albumKey,
+        currentPageToken,
+        atToken,
+        finalResolvedUrl
+      );
+
+      if (batchText) {
+        scanContent(batchText);
+      }
+
+      // Nếu không còn token hoặc token không đổi -> đã tải hết 100% album
+      if (!nextToken || nextToken === currentPageToken) {
+        break;
+      }
+
+      currentPageToken = nextToken;
+    }
+
+    // 7. Chuyển đổi thành danh sách ảnh hoàn chỉnh
     const extractedPhotos = [];
     let photoIndex = 1;
     for (const [, srcUrl] of photoMap.entries()) {
