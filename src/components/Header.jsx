@@ -1,8 +1,34 @@
-import { Heart, Sparkles, Camera, CalendarHeart } from "lucide-react";
+import { Heart, Sparkles, Camera, CalendarHeart, Settings } from "lucide-react";
 
-export default function Header({ totalAlbums = 0, totalPhotos = 0 }) {
+export default function Header({
+  siteInfo = {},
+  totalAlbums = 0,
+  totalPhotos = 0,
+  onOpenAdmin,
+}) {
+  const title = siteInfo.title || "Những Khoảnh Khắc Vô Giá";
+  const subtitle =
+    siteInfo.subtitle ||
+    "Mỗi bức ảnh là một chiếc vé du hành về miền ký ức ngọt ngào — nơi tình thân luôn ấm áp, tiếng cười luôn vang mãi và yêu thương là bến đỗ bình yên nhất.";
+  const timeRange = siteInfo.timeRange || "2023 - 2024";
+
   return (
-    <header className="relative pt-12 pb-10 sm:pt-16 sm:pb-14 px-4 sm:px-6 lg:px-8 border-b border-stone-200/80 bg-gradient-to-b from-[#F7F2EA]/80 via-[#FAF7F2] to-[#FAF7F2]">
+    <header className="relative pt-10 pb-10 sm:pt-14 sm:pb-14 px-4 sm:px-6 lg:px-8 border-b border-stone-200/80 bg-gradient-to-b from-[#F7F2EA]/80 via-[#FAF7F2] to-[#FAF7F2]">
+      {/* Nút Cài Đặt (Admin Settings) ở góc phải trên */}
+      {onOpenAdmin && (
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-10">
+          <button
+            type="button"
+            onClick={onOpenAdmin}
+            title="Bảng Quản Trị & Cài Đặt Album"
+            className="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 hover:bg-white border border-stone-200/90 text-stone-600 hover:text-stone-900 shadow-2xs hover:shadow-sm backdrop-blur-sm transition cursor-pointer text-xs font-medium"
+          >
+            <Settings className="w-4 h-4 text-stone-500 group-hover:text-amber-800 transition-transform duration-500 group-hover:rotate-90" />
+            <span className="hidden sm:inline">Quản Trị</span>
+          </button>
+        </div>
+      )}
+
       {/* Họa tiết trang trí nền tinh tế */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-amber-200/30 rounded-full blur-3xl" />
@@ -19,13 +45,12 @@ export default function Header({ totalAlbums = 0, totalPhotos = 0 }) {
 
         {/* Tiêu đề chính theo font Serif sang trọng, ấm cúng */}
         <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-stone-900 mb-4 leading-[1.15]">
-          Những Khoảnh Khắc <span className="italic font-normal text-amber-900">Vô Giá</span>
+          {title}
         </h1>
 
         {/* Lời tựa tình cảm */}
         <p className="max-w-2xl mx-auto text-base sm:text-lg text-stone-600 font-normal leading-relaxed mb-8">
-          Mỗi bức ảnh là một chiếc vé du hành về miền ký ức ngọt ngào — nơi tình thân luôn ấm áp,
-          tiếng cười luôn vang mãi và yêu thương là bến đỗ bình yên nhất.
+          {subtitle}
         </p>
 
         {/* Thông số thống kê nhanh */}
@@ -51,7 +76,7 @@ export default function Header({ totalAlbums = 0, totalPhotos = 0 }) {
           <div className="flex items-center gap-2">
             <CalendarHeart className="w-4 h-4 text-stone-700" />
             <span>
-              Mốc thời gian: <strong className="font-semibold text-stone-800">2023 - 2024</strong>
+              Mốc thời gian: <strong className="font-semibold text-stone-800">{timeRange}</strong>
             </span>
           </div>
         </div>

@@ -6,13 +6,16 @@ Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu 
 
 ## ✨ Tính năng nổi bật
 
-- 🔒 **Khóa mật khẩu bảo vệ gia đình (Password Gatekeeper)**:
-  - Bảo vệ không gian riêng tư của gia đình, yêu cầu mật khẩu để xem ảnh.
-  - Hiệu ứng rung phản hồi (shake animation) khi gõ sai mã, hỗ trợ ẩn/hiện mật khẩu.
-  - Lưu phiên đăng nhập an toàn vào `localStorage` (không phải nhập lại khi F5).
-  - Nút **"Khóa Thư Viện"** tiện lợi tại Footer để dễ dàng khóa lại khi rời máy.
-  - Tránh lỗi SSR Hydration mismatch hoàn toàn bằng cơ chế mounting state mượt mà.
-- 🎨 **Thiết kế ấm áp & tinh tế**: Gam màu be/stone trung tính, font chữ Serif (`Playfair Display`) sang trọng, tạo cảm giác thân thuộc như một cuốn album kỷ niệm truyền thống.
+- 🌍 **Xem ảnh công khai & mượt mà**: Trang chủ mở công khai cho tất cả mọi người cùng vào ngắm nhìn những bức ảnh kỷ niệm gia đình mà không gặp rào cản.
+- ⚙️ **Bảng Quản Trị & Cài Đặt (Admin Settings Modal) có khóa mật khẩu**:
+  - Nhấn nút **Quản Trị / Settings** ở góc Header hoặc Footer để mở cửa sổ đăng nhập Admin.
+  - Khóa mật khẩu an toàn (mặc định: `admin123`, tùy biến qua `.env.local`), có hiệu ứng rung phản hồi (shake animation) khi gõ sai.
+  - **Quản lý Album trực tiếp**: Thêm album mới, sửa thông tin (tiêu đề, năm, tag, link cover, mô tả), thêm/xóa ảnh con (`src`, `title`, `description`), hoặc xóa album.
+  - **Chỉnh sửa Thông tin Website**: Sửa tiêu đề chính trang web, lời tựa tình cảm và mốc thời gian hiển thị.
+  - **Đồng bộ hóa tức thì**: Lưu trạng thái vào `localStorage` để giao diện web lập tức cập nhật mà không cần reload.
+  - **Xuất file JSON (Export JSON / Copy)**: Tải về hoặc sao chép nhanh toàn bộ dữ liệu `albums.json` mới để dán đè vào `data/albums.json` khi muốn commit cố định vào Git.
+  - **Khôi phục mặc định (Reset)**: Xóa bộ nhớ tạm và nạp lại dữ liệu gốc ban đầu bất kỳ lúc nào.
+- 🎨 **Thiết kế ấm áp & tinh tế**: Gam màu be/stone trung tính (`#FAF7F2`), font chữ Serif (`Playfair Display`) sang trọng, tạo cảm giác thân thuộc như một cuốn album kỷ niệm truyền thống.
 - 🏷️ **Bộ lọc Tag thông minh**: Dễ dàng chuyển đổi giữa các chủ đề: *Gia đình*, *Du lịch*, *Lễ Tết*, *Kỷ niệm*... kèm số lượng album theo từng nhóm.
 - 🔍 **Tìm kiếm tức thì**: Tìm kiếm album nhanh chóng theo tiêu đề, năm hoặc nội dung mô tả.
 - 📱 **Giao diện Responsive**: Tự động co giãn mượt mà trên mọi thiết bị (1 cột trên điện thoại, 2 cột trên tablet, 3 cột trên máy tính).
@@ -20,7 +23,6 @@ Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu 
   - Tích hợp 4 plugin cao cấp: **Thumbnails** (dải ảnh thu nhỏ phía dưới), **Zoom** (phóng to chi tiết), **Captions** (tiêu đề & mô tả ảnh), **Counter** (đếm số thứ tự ảnh).
   - Hỗ trợ vuốt chạm cảm ứng (swipe), phím mũi tên bàn phím, phóng to/thu nhỏ ảnh.
   - Xem trực tiếp từng ảnh từ dải thumbnail preview tròn trên mỗi thẻ album.
-- ⚡ **Tối ưu hiệu năng**: Server Component (`src/app/page.js`) đọc trực tiếp dữ liệu tĩnh kết hợp Client Component (`src/components/Gallery.jsx`) đảm bảo tốc độ tải trang cực nhanh.
 - 🌐 **Sẵn sàng cho Google Photos / Drive & Unsplash**: Cấu hình sẵn `remotePatterns` trong `next.config.mjs` cho `images.unsplash.com`, `drive.google.com`, và `lh3.googleusercontent.com`.
 
 ---
@@ -39,20 +41,21 @@ Một ứng dụng web tinh tế, ấm cúng và hiện đại dùng để lưu 
 
 ```text
 family-gallery/
-├── .env.example                 # File mẫu cấu hình biến môi trường
-├── .env.local                   # Mật khẩu gia đình thực tế (được gitignore)
+├── .env.example                 # File mẫu cấu hình mật khẩu Admin
+├── .env.local                   # Mật khẩu Admin thực tế (được gitignore)
 ├── data/
-│   └── albums.json              # Dữ liệu album & ảnh kỷ niệm
+│   └── albums.json              # Dữ liệu album & ảnh kỷ niệm gốc
 ├── src/
 │   ├── app/
 │   │   ├── globals.css          # Cấu hình Tailwind CSS, animation shake & scrollbar
 │   │   ├── layout.js            # Root layout tích hợp Google Fonts
-│   │   └── page.js              # Server Component chính bọc PasswordGate
+│   │   └── page.js              # Server Component đọc data/albums.json
 │   └── components/
-│       ├── PasswordGate.jsx     # Màn hình khóa mật khẩu gia đình
-│       ├── Header.jsx           # Header trang trí & thống kê kỷ niệm
-│       ├── Gallery.jsx          # Client Component bộ lọc & Lightbox
-│       └── Footer.jsx           # Chân trang & nút Khóa Thư Viện
+│       ├── FamilyGalleryApp.jsx # Component điều phối dữ liệu động & LocalStorage
+│       ├── AdminModal.jsx       # Bảng Quản Trị & Cài Đặt (có khóa PIN Admin)
+│       ├── Header.jsx           # Header trang trí, thống kê & nút Cài đặt
+│       ├── Gallery.jsx          # Lưới Album, bộ lọc tag & Lightbox
+│       └── Footer.jsx           # Chân trang & nút Quản Trị Album
 ├── next.config.mjs              # Cấu hình domain ảnh (Unsplash, Google)
 ├── package.json
 └── README.md
@@ -60,17 +63,14 @@ family-gallery/
 
 ---
 
-## 🔑 Cấu hình Mật khẩu Gia đình
+## 🔑 Mật khẩu Quản trị (Admin Password)
 
-Dự án sử dụng biến môi trường `NEXT_PUBLIC_FAMILY_PASSWORD`. Mật khẩu mặc định là: **`giadinh2024`**.
-
-Để thay đổi mật khẩu:
-1. Mở file `.env.local` trong thư mục gốc.
-2. Sửa giá trị thành mật khẩu bạn muốn:
-   ```env
-   NEXT_PUBLIC_FAMILY_PASSWORD=mat_khau_moi_cua_ban
-   ```
-3. Khởi động lại dev server nếu đang chạy (`npm run dev`).
+- Mật khẩu Admin mặc định: **`admin123`**.
+- Để đổi mật khẩu: Mở file `.env.local` và sửa giá trị:
+  ```env
+  NEXT_PUBLIC_ADMIN_PASSWORD=mat_khau_moi_cua_ban
+  ```
+  *(Khởi động lại `npm run dev` nếu đang chạy để áp dụng)*
 
 ---
 
@@ -87,8 +87,9 @@ npm run dev
 ```
 Mở trình duyệt và truy cập: **`http://localhost:3000`**
 
-- Màn hình khóa sẽ xuất hiện. Nhập mật khẩu: `giadinh2024` và bấm **Mở Khóa Album**.
-- Để thử lại màn hình khóa, cuộn xuống chân trang (Footer) và bấm nút **"Khóa Thư Viện"**.
+- **Xem ảnh**: Toàn bộ album ảnh mở công khai, nhấp vào thẻ album để mở trình xem slide Lightbox.
+- **Vào Bảng Quản Trị**: Nhấn nút **Quản Trị** (icon bánh răng `Settings`) ở góc trên Header hoặc nút **Quản Trị Album** ở chân trang Footer.
+- Nhập mật khẩu: `admin123` để mở bảng điều khiển.
 
 ### 3. Build kiểm tra phiên bản sản xuất
 ```bash
@@ -98,44 +99,11 @@ npm run start
 
 ---
 
-## 📝 Cách thêm hoặc chỉnh sửa Album ảnh
-
-Mở tệp `data/albums.json` và thêm đối tượng album mới theo cấu trúc sau:
-
-```json
-{
-  "id": "chuyen-di-da-lat-2024",
-  "title": "Chuyến Đi Đà Lạt Mộng Mơ",
-  "year": "2024",
-  "tag": "Du lịch",
-  "cover": "https://images.unsplash.com/photo-...",
-  "description": "Những ngày nghỉ thảnh thơi giữa rừng thông mát lành cùng gia đình nhỏ.",
-  "photos": [
-    {
-      "src": "https://images.unsplash.com/photo-...",
-      "title": "Săn mây sớm tại đồi Đa Phú",
-      "description": "Bình minh tuyệt đẹp giữa làn mây trắng bồng bềnh."
-    }
-  ]
-}
-```
-
----
-
 ## 📤 Hướng dẫn đẩy mã nguồn lên GitHub cá nhân
 
-### Cách 1: Sử dụng GitHub CLI (`gh`) - Nhanh nhất
-
 ```bash
 git add .
-git commit -m "feat: add password protection gatekeeper"
+git commit -m "feat: add admin settings modal with password pin and album management"
 git push
 ```
-
-### Cách 2: Sử dụng Git truyền thống
-
-```bash
-git add .
-git commit -m "feat: add password protection gatekeeper"
-git push -u origin main
-```
+*(Nếu là repository mới tạo, dùng `git push -u origin main`)*
