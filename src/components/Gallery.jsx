@@ -17,16 +17,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-import Lightbox from 'yet-another-react-lightbox';
-import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails';
-import Zoom from 'yet-another-react-lightbox/plugins/zoom';
-import Captions from 'yet-another-react-lightbox/plugins/captions';
-import Counter from 'yet-another-react-lightbox/plugins/counter';
-
-import 'yet-another-react-lightbox/styles.css';
-import 'yet-another-react-lightbox/plugins/thumbnails.css';
-import 'yet-another-react-lightbox/plugins/captions.css';
-import 'yet-another-react-lightbox/plugins/counter.css';
+import Lightbox from '@/components/Lightbox';
 
 // Ánh xạ icon cho từng loại danh mục
 const TAG_ICONS = {
@@ -45,6 +36,7 @@ export default function Gallery({ albums = [] }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentSlides, setCurrentSlides] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [activeAlbumTitle, setActiveAlbumTitle] = useState('');
 
   // Danh sách các tag độc nhất có trong dữ liệu
   const tags = useMemo(() => {
@@ -85,6 +77,7 @@ export default function Gallery({ albums = [] }) {
       });
     }
 
+    setActiveAlbumTitle(album.title || '');
     setCurrentSlides(slides);
     setLightboxIndex(initialIndex >= 0 && initialIndex < slides.length ? initialIndex : 0);
     setLightboxOpen(true);
@@ -336,31 +329,13 @@ export default function Gallery({ albums = [] }) {
         </div>
       )}
 
-      {/* Trình xem ảnh dạng slide chuyên nghiệp Lightbox */}
+      {/* Trình xem ảnh & video chuyên nghiệp Lightbox */}
       <Lightbox
-        open={lightboxOpen}
-        close={() => setLightboxOpen(false)}
-        index={lightboxIndex}
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
         slides={currentSlides}
-        plugins={[Thumbnails, Zoom, Captions, Counter]}
-        captions={{
-          showToggle: true,
-          descriptionTextAlign: 'center',
-        }}
-        thumbnails={{
-          position: 'bottom',
-          width: 100,
-          height: 66,
-          border: 2,
-          gap: 12,
-        }}
-        zoom={{
-          maxZoomPixelRatio: 3,
-          zoomInMultiplier: 1.5,
-        }}
-        animation={{
-          swipe: 250,
-        }}
+        initialIndex={lightboxIndex}
+        albumTitle={activeAlbumTitle}
       />
     </section>
   );
