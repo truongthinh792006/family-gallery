@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   X,
@@ -76,11 +76,11 @@ export default function AdminModal({
   const adminPassword =
     process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
 
-  // Đồng bộ props vào local state khi modal mở
+  // Chỉ khởi tạo lại state cục bộ khi modal mở lên (tránh reset form khi props thay đổi trong phiên làm việc)
   useEffect(() => {
     if (isOpen) {
-      setLocalAlbums(albums);
-      setLocalSiteInfo(siteInfo);
+      setLocalAlbums(JSON.parse(JSON.stringify(albums)));
+      setLocalSiteInfo(JSON.parse(JSON.stringify(siteInfo)));
       setEditingIndex(null);
       setSaveSuccess(false);
       setSyncStatusMessage('');
@@ -94,7 +94,7 @@ export default function AdminModal({
         }
       } catch {}
     }
-  }, [isOpen, albums, siteInfo]);
+  }, [isOpen]); // Chỉ phụ thuộc isOpen để tránh reset form khi parent component cập nhật
 
   if (!isOpen) return null;
 
@@ -132,13 +132,7 @@ export default function AdminModal({
       tag: 'Gia đình',
       cover: '',
       description: '',
-      photos: [
-        {
-          src: '',
-          title: '',
-          description: '',
-        },
-      ],
+      photos: [],
     });
     setEditingIndex(-1);
     setScrapeMessage(null);
@@ -148,7 +142,17 @@ export default function AdminModal({
   // Mở form sửa album đã có
   const handleStartEditAlbum = (index) => {
     const target = localAlbums[index];
-    setAlbumForm(JSON.parse(JSON.stringify(target)));
+    if (!target) return;
+
+    setAlbumForm({
+      id: target.id || `album-${Date.now()}`,
+      title: target.title || '',
+      year: (target.year !== undefined && target.year !== null ? target.year : new Date().getFullYear()).toString(),
+      tag: target.tag || 'Gia đình',
+      cover: target.cover || '',
+      description: target.description || '',
+      photos: Array.isArray(target.photos) ? JSON.parse(JSON.stringify(target.photos)) : [],
+    });
     setEditingIndex(index);
     setScrapeMessage(null);
     setGooglePhotosUrl('');
@@ -156,21 +160,25 @@ export default function AdminModal({
 
   // Xóa album
   const handleDeleteAlbum = (index) => {
+    const albumToDelete = localAlbums[index];
     const confirmDelete = window.confirm(
-      `Bạn có chắc chắn muốn xóa album "${localAlbums[index].title}" không?`
+      `Bạn có chắc chắn muốn xóa album "${albumToDelete?.title || 'này'}" không?`
     );
     if (confirmDelete) {
       const updated = localAlbums.filter((_, idx) => idx !== index);
       setLocalAlbums(updated);
+      if (editingIndex === index) {
+        setEditingIndex(null);
+      }
     }
   };
 
-  // Thêm ảnh vào form album đang sửa
+  // Thêm ảnh thủ công vào form album đang sửa
   const handleAddPhotoField = () => {
     setAlbumForm((prev) => ({
       ...prev,
       photos: [
-        ...prev.photos,
+        ...(prev.photos || []),
         {
           src: '',
           title: '',
@@ -184,14 +192,14 @@ export default function AdminModal({
   const handleRemovePhotoField = (photoIndex) => {
     setAlbumForm((prev) => ({
       ...prev,
-      photos: prev.photos.filter((_, idx) => idx !== photoIndex),
+      photos: (prev.photos || []).filter((_, idx) => idx !== photoIndex),
     }));
   };
 
   // Cập nhật thông tin từng ảnh trong album
   const handlePhotoChange = (photoIndex, field, value) => {
     setAlbumForm((prev) => {
-      const updatedPhotos = [...prev.photos];
+      const updatedPhotos = [...(prev.photos || [])];
       updatedPhotos[photoIndex] = {
         ...updatedPhotos[photoIndex],
         [field]: value,
@@ -222,31 +230,35 @@ export default function AdminModal({
       const result = await res.json();
 
       if (res.ok && result.success) {
-        // Tự động điền tiêu đề nếu form hiện tại đang trống và có tiêu đề bóc tách được
-        const newTitle = albumForm.title.trim()
-          ? albumForm.title
-          : result.title || albumForm.title;
+        setAlbumForm((prev) => {
+          // Chỉ điền tiêu đề nếu form hiện tại đang để trống tiêu đề
+          const newTitle =
+            prev.title && prev.title.trim()
+              ? prev.title
+              : result.title || prev.title || 'Album Google Photos';
 
-        // Điền ảnh bìa (Cover Photo) nếu chưa có
-        const newCover = albumForm.cover.trim()
-          ? albumForm.cover
-          : result.coverPhoto || (result.photos[0] ? result.photos[0].src : '');
+          // Điền ảnh bìa (Cover Photo) nếu form hiện tại chưa có
+          const newCover =
+            prev.cover && prev.cover.trim()
+              ? prev.cover
+              : result.coverPhoto || (result.photos && result.photos[0] ? result.photos[0].src : '');
 
-        // Nạp toàn bộ danh sách ảnh trích xuất được vào mảng photos
-        const existingPhotos = albumForm.photos.filter(
-          (p) => p.src && p.src.trim() !== ''
-        );
-        const mergedPhotos =
-          existingPhotos.length === 0
-            ? result.photos
-            : [...existingPhotos, ...result.photos];
+          // Ghép thêm ảnh vào danh sách (loại bỏ ảnh rỗng nếu có)
+          const existingPhotos = (prev.photos || []).filter(
+            (p) => p.src && p.src.trim() !== ''
+          );
+          const mergedPhotos =
+            existingPhotos.length === 0
+              ? result.photos
+              : [...existingPhotos, ...result.photos];
 
-        setAlbumForm((prev) => ({
-          ...prev,
-          title: newTitle,
-          cover: newCover,
-          photos: mergedPhotos,
-        }));
+          return {
+            ...prev,
+            title: newTitle,
+            cover: newCover,
+            photos: mergedPhotos,
+          };
+        });
 
         setScrapeMessage({
           type: 'success',
@@ -269,17 +281,27 @@ export default function AdminModal({
     }
   };
 
-  // Lưu form album (thêm mới hoặc cập nhật vào local state)
-  const handleSaveAlbumForm = (e) => {
-    e.preventDefault();
-    if (!albumForm.title.trim()) {
-      alert('Vui lòng nhập tiêu đề album!');
-      return;
+  /**
+   * Hàm cốt lõi: Hợp nhất dữ liệu đang nhập trong form (nếu đang ở màn hình sửa/thêm)
+   * vào danh sách localAlbums để đảm bảo không bị thất thoát dữ liệu.
+   */
+  const getCommittedAlbums = useCallback(() => {
+    if (editingIndex === null) {
+      return localAlbums;
     }
 
-    // Nếu chưa có ảnh bìa, lấy ảnh con đầu tiên nếu có
-    let coverUrl = albumForm.cover.trim();
-    if (!coverUrl && albumForm.photos.length > 0 && albumForm.photos[0].src) {
+    const currentTitle = (albumForm.title || '').trim();
+    if (!currentTitle) {
+      return localAlbums;
+    }
+
+    let coverUrl = (albumForm.cover || '').trim();
+    if (
+      !coverUrl &&
+      albumForm.photos &&
+      albumForm.photos.length > 0 &&
+      albumForm.photos[0].src
+    ) {
       coverUrl = albumForm.photos[0].src.trim();
     }
     if (!coverUrl) {
@@ -288,26 +310,52 @@ export default function AdminModal({
     }
 
     const cleanedAlbum = {
-      ...albumForm,
+      id: albumForm.id || `album-${Date.now()}`,
+      title: currentTitle,
+      year: (albumForm.year !== undefined && albumForm.year !== null ? albumForm.year : new Date().getFullYear()).toString().trim(),
+      tag: (albumForm.tag || 'Gia đình').trim(),
       cover: coverUrl,
-      photos: albumForm.photos.filter((p) => p.src.trim() !== ''),
+      description: (albumForm.description || '').trim(),
+      photos: (albumForm.photos || []).filter((p) => p && p.src && p.src.trim() !== ''),
     };
 
+    let updatedList;
     if (editingIndex === -1) {
-      // Thêm mới lên đầu
-      setLocalAlbums([cleanedAlbum, ...localAlbums]);
-    } else if (editingIndex >= 0) {
+      // Thêm mới lên đầu danh sách
+      updatedList = [cleanedAlbum, ...localAlbums];
+    } else if (editingIndex >= 0 && editingIndex < localAlbums.length) {
       // Cập nhật vị trí cũ
-      const updated = [...localAlbums];
-      updated[editingIndex] = cleanedAlbum;
-      setLocalAlbums(updated);
+      updatedList = [...localAlbums];
+      updatedList[editingIndex] = cleanedAlbum;
+    } else {
+      updatedList = localAlbums;
     }
 
+    return updatedList;
+  }, [editingIndex, albumForm, localAlbums]);
+
+  // Lưu form album (khi người dùng bấm "Xong (Cập nhật Album)")
+  const handleSaveAlbumForm = (e) => {
+    if (e) e.preventDefault();
+    if (!albumForm.title.trim()) {
+      alert('Vui lòng nhập tiêu đề album!');
+      return;
+    }
+
+    const updatedList = getCommittedAlbums();
+    setLocalAlbums(updatedList);
     setEditingIndex(null);
   };
 
   // Lưu thay đổi: Gửi POST lên /api/gallery (Vercel KV) và cập nhật App state
   const handleApplyChanges = async () => {
+    // Tự động cam kết dữ liệu form nếu đang ở màn hình chỉnh sửa
+    const albumsToSave = getCommittedAlbums();
+    setLocalAlbums(albumsToSave);
+    if (editingIndex !== null) {
+      setEditingIndex(null);
+    }
+
     setIsSyncing(true);
     setSyncStatusMessage('Đang lưu lên đám mây...');
 
@@ -318,7 +366,7 @@ export default function AdminModal({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          albums: localAlbums,
+          albums: albumsToSave,
           siteInfo: localSiteInfo,
           password: adminPassword,
         }),
@@ -327,7 +375,7 @@ export default function AdminModal({
       const result = await res.json();
 
       if (res.ok && result.success) {
-        onSaveAlbums(localAlbums);
+        onSaveAlbums(albumsToSave);
         onSaveSiteInfo(localSiteInfo);
         setSaveSuccess(true);
         setSyncStatusMessage(
@@ -338,12 +386,12 @@ export default function AdminModal({
       } else {
         alert(result.message || 'Lỗi khi lưu lên máy chủ');
         // Vẫn lưu vào bộ nhớ cục bộ để không mất công nhập
-        onSaveAlbums(localAlbums);
+        onSaveAlbums(albumsToSave);
         onSaveSiteInfo(localSiteInfo);
       }
     } catch (err) {
       // Khi mất mạng hoặc offline, lưu cục bộ dự phòng
-      onSaveAlbums(localAlbums);
+      onSaveAlbums(albumsToSave);
       onSaveSiteInfo(localSiteInfo);
       setSaveSuccess(true);
       setSyncStatusMessage('Đã lưu cục bộ vào trình duyệt!');
@@ -358,7 +406,8 @@ export default function AdminModal({
 
   // Xuất file JSON tải về
   const handleExportJSON = () => {
-    const jsonString = JSON.stringify(localAlbums, null, 2);
+    const currentAlbums = getCommittedAlbums();
+    const jsonString = JSON.stringify(currentAlbums, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const href = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -373,7 +422,8 @@ export default function AdminModal({
   // Sao chép JSON vào Clipboard
   const handleCopyJSON = async () => {
     try {
-      const jsonString = JSON.stringify(localAlbums, null, 2);
+      const currentAlbums = getCommittedAlbums();
+      const jsonString = JSON.stringify(currentAlbums, null, 2);
       await navigator.clipboard.writeText(jsonString);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
@@ -642,9 +692,9 @@ export default function AdminModal({
                         <input
                           type="text"
                           required
-                          value={albumForm.title}
+                          value={albumForm.title || ''}
                           onChange={(e) =>
-                            setAlbumForm({ ...albumForm, title: e.target.value })
+                            setAlbumForm((prev) => ({ ...prev, title: e.target.value }))
                           }
                           placeholder="VD: Kỳ Nghỉ Hè Nha Trang"
                           className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -659,9 +709,9 @@ export default function AdminModal({
                           <input
                             type="text"
                             required
-                            value={albumForm.year}
+                            value={albumForm.year || ''}
                             onChange={(e) =>
-                              setAlbumForm({ ...albumForm, year: e.target.value })
+                              setAlbumForm((prev) => ({ ...prev, year: e.target.value }))
                             }
                             placeholder="2024"
                             className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -673,9 +723,9 @@ export default function AdminModal({
                             Thể loại (Tag)
                           </label>
                           <select
-                            value={albumForm.tag}
+                            value={albumForm.tag || 'Gia đình'}
                             onChange={(e) =>
-                              setAlbumForm({ ...albumForm, tag: e.target.value })
+                              setAlbumForm((prev) => ({ ...prev, tag: e.target.value }))
                             }
                             className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
                           >
@@ -695,9 +745,9 @@ export default function AdminModal({
                       </label>
                       <input
                         type="url"
-                        value={albumForm.cover}
+                        value={albumForm.cover || ''}
                         onChange={(e) =>
-                          setAlbumForm({ ...albumForm, cover: e.target.value })
+                          setAlbumForm((prev) => ({ ...prev, cover: e.target.value }))
                         }
                         placeholder="https://images.unsplash.com/... hoặc https://lh3.googleusercontent.com/..."
                         className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -710,9 +760,9 @@ export default function AdminModal({
                       </label>
                       <textarea
                         rows={2}
-                        value={albumForm.description}
+                        value={albumForm.description || ''}
                         onChange={(e) =>
-                          setAlbumForm({ ...albumForm, description: e.target.value })
+                          setAlbumForm((prev) => ({ ...prev, description: e.target.value }))
                         }
                         placeholder="Cảm xúc, câu chuyện ngắn về chuyến đi hoặc kỷ niệm này..."
                         className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -748,7 +798,7 @@ export default function AdminModal({
                               <input
                                 type="url"
                                 required
-                                value={photo.src}
+                                value={photo.src || ''}
                                 onChange={(e) =>
                                   handlePhotoChange(pIdx, 'src', e.target.value)
                                 }
@@ -757,7 +807,7 @@ export default function AdminModal({
                               />
                               <input
                                 type="text"
-                                value={photo.title}
+                                value={photo.title || ''}
                                 onChange={(e) =>
                                   handlePhotoChange(pIdx, 'title', e.target.value)
                                 }
@@ -883,7 +933,7 @@ export default function AdminModal({
                     type="text"
                     value={localSiteInfo.title || ''}
                     onChange={(e) =>
-                      setLocalSiteInfo({ ...localSiteInfo, title: e.target.value })
+                      setLocalSiteInfo((prev) => ({ ...prev, title: e.target.value }))
                     }
                     placeholder="VD: Những Khoảnh Khắc Vô Giá"
                     className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -898,7 +948,7 @@ export default function AdminModal({
                     rows={3}
                     value={localSiteInfo.subtitle || ''}
                     onChange={(e) =>
-                      setLocalSiteInfo({ ...localSiteInfo, subtitle: e.target.value })
+                      setLocalSiteInfo((prev) => ({ ...prev, subtitle: e.target.value }))
                     }
                     placeholder="Mỗi bức ảnh là một chiếc vé du hành..."
                     className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
@@ -913,7 +963,7 @@ export default function AdminModal({
                     type="text"
                     value={localSiteInfo.timeRange || ''}
                     onChange={(e) =>
-                      setLocalSiteInfo({ ...localSiteInfo, timeRange: e.target.value })
+                      setLocalSiteInfo((prev) => ({ ...prev, timeRange: e.target.value }))
                     }
                     placeholder="2023 - 2024"
                     className="w-full px-3 py-2 text-sm bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-amber-700"
